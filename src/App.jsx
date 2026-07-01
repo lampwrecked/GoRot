@@ -563,6 +563,34 @@ function CardViewer({ token, onClose }) {
   );
 }
 
+// ── GAME END MODAL ────────────────────────────────────────────────────────
+function GameEndModal({ players, onDismiss }) {
+  const sorted = [...players].sort((a, b) => b.score - a.score);
+  const leader = sorted[0];
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.93)", zIndex: 99, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.card, border: `2px solid ${C.acid}`, borderRadius: 16, padding: "28px 20px", maxWidth: 320, width: "100%", textAlign: "center", display: "flex", flexDirection: "column", gap: 16, animation: "fadein 0.2s ease", boxShadow: "0 0 32px rgba(57,255,20,0.2)" }}>
+        <div>
+          <p style={{ color: C.muted, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", margin: "0 0 6px" }}>Pile empty — game over</p>
+          <h2 style={{ fontFamily: imp, fontSize: 38, color: C.acid, margin: 0, lineHeight: 1 }}>{leader.name}</h2>
+          <p style={{ fontFamily: imp, fontSize: 18, color: C.chalk, margin: "4px 0 0", letterSpacing: 1 }}>IS WINNING</p>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {sorted.map((p, i) => (
+            <div key={p.name} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderRadius: 6, background: i === 0 ? "rgba(57,255,20,0.08)" : C.corrupt, border: `1px solid ${i === 0 ? C.acid : C.border}` }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: i === 0 ? C.acid : C.chalk }}>{p.name}</span>
+              <span style={{ fontFamily: imp, fontSize: 20, color: C.acid }}>{p.score}</span>
+            </div>
+          ))}
+        </div>
+        <button onClick={onDismiss} style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
+          SEE FINAL SCORES
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── GAME ──────────────────────────────────────────────────────────────────
 function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedMock, onEnd }) {
   const [players, setPlayers] = useState(init);
@@ -643,10 +671,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
       setPlayers(ps); setSelBase(null);
 
       if (pile.length === 0) {
-        modalQueue.current = pendingModals;
-        showNext();
-        setTimeout(() => onEnd(ps), pendingModals.length * 4000 + 500);
-        return;
+        pendingModals.push({ type: "gameend", players: ps });
       }
 
       modalQueue.current = pendingModals;
@@ -699,9 +724,18 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
     setModal(null);
 
     if (p2.length === 0) {
-      modalQueue.current = setModals;
+      // Score any remaining sets in all hands before ending
+      let finalPs = ps;
+      const finalSets = [];
+      finalPs.forEach((_, i) => {
+        const before = finalPs;
+        finalPs = applyCheck(finalPs, i, finalSets);
+      });
+      setPlayers(finalPs);
+      const endModals = finalSets.map(({ player, set }) => ({ type: "set", player, set }));
+      endModals.push({ type: "gameend", players: finalPs });
+      modalQueue.current = endModals;
       showNext();
-      setTimeout(() => onEnd(ps), (1 + setModals.length) * 4000 + 500);
       return;
     }
 
@@ -709,7 +743,6 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
       modalQueue.current = setModals;
       showNext();
     } else {
-      // advance turn directly since there's no further modal
       const next = (cur + 1) % ps.length;
       setCur(next); setTargetIdx((next + 1) % ps.length);
       setRevealed(isBotMode && next === BOT_IDX);
@@ -718,6 +751,10 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
   }
 
   function dismissModal() {
+    if (modal?.type === "gameend") {
+      onEnd(modal.players);
+      return;
+    }
     if (modal?.type === "match" && modalQueue.current.length === 0) {
       setModal(null);
     } else {
@@ -759,6 +796,9 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
 
       {viewedCard && <CardViewer token={viewedCard} onClose={() => setViewedCard(null)} />}
 
+      {modal?.type === "gameend" && (
+        <GameEndModal players={modal.players} onDismiss={dismissModal} />
+      )}
       {modal?.type === "rot" && (
         <RotModal
           asker={modal.asker} target={modal.target} base={modal.base}
