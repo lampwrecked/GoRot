@@ -112,8 +112,10 @@ function Loader({ msg }) {
   return (
     <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: 24, fontFamily: mono }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes sl{0%{transform:translateX(-200%)}100%{transform:translateX(500%)}}@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}@keyframes fadein{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}@keyframes cardpop{from{opacity:0;transform:translateY(14px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}`}</style>
-      <h1 style={{ fontFamily: imp, fontSize: 64, lineHeight: 1, margin: 0, textAlign: "center" }}>GO <span style={{ color: C.acid }}>ROT</span></h1>
-      <p style={{ color: C.muted, fontSize: 9, letterSpacing: 3, textTransform: "uppercase", margin: 0 }}>GO ROT</p>
+      <h1 style={{ fontFamily: imp, fontSize: 64, lineHeight: 1, margin: 0, textAlign: "center" }}>
+        <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
+      </h1>
+      <p style={{ color: C.muted, fontSize: 9, letterSpacing: 3, textTransform: "uppercase", margin: 0 }}>NUCLEAR SAMURAI</p>
       <div style={{ width: 180, height: 2, background: C.corrupt, borderRadius: 1, overflow: "hidden" }}>
         <div style={{ width: "40%", height: "100%", background: C.acid, animation: "sl 1.3s ease-in-out infinite" }} />
       </div>
@@ -961,7 +963,9 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
       {/* Top bar */}
       <div style={{ background: C.corrupt, borderBottom: `1px solid ${C.border}`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
-          <div style={{ fontFamily: imp, fontSize: 15, color: C.acid, letterSpacing: 1 }}>BRAINROT GO ROT</div>
+          <div style={{ fontFamily: imp, fontSize: 15, letterSpacing: 1 }}>
+            <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
+          </div>
           <div style={{ fontSize: 10, color: C.muted }}>
             Round {round}/{TOTAL_ROUNDS} · Pile: {pile.length} · {isBotTurn ? <span style={{ color: C.mag }}>🤖 Rottington is thinking…</span> : `${me.name}'s turn`}
           </div>
@@ -1161,15 +1165,19 @@ export default function App() {
   const [gameAllTokens, setGameAllTokens] = useState([]);
   const [endPlayers, setEndPlayers] = useState([]);
 
+  const tokenCache = useRef([]); // prefetched metadata, reused every deal
+
   useEffect(() => {
     async function load(attempt = 1) {
       try {
-        setStatus(attempt > 1 ? `Retrying… (attempt ${attempt})` : "Fetching card catalog…");
+        setStatus(attempt > 1 ? `Retrying… (${attempt}/4)` : "Fetching card catalog…");
         const td = await cpi("/traits?type=Base");
         const bases = td?.data?.[0]?.values || [];
         if (!bases.length) throw new Error("No bases found");
         const playable = bases.filter(b => b.count >= 4);
         setStatus(`${playable.length} Base types. Loading pools…`);
+
+        // Fetch token ID pools per base
         const pools = [];
         const take = Math.min(playable.length, 18);
         for (let i = 0; i < take; i++) {
@@ -1182,8 +1190,33 @@ export default function App() {
           if ((i + 1) % 3 === 0) setStatus(`Loading pools… ${i + 1}/${take}`);
         }
         if (!pools.length) throw new Error("No pools found");
-        setBasePools(pools); setUsedMock(false);
-        setStatus(`Ready — ${pools.length} creature types.`);
+        setBasePools(pools);
+
+        // Prefetch a large token metadata cache in the background so
+        // deals are instant. Sample generously — 8 per base type.
+        const perBase = 8;
+        const maxBases = Math.min(pools.length, 20);
+        const allIds = [];
+        shuffle(pools).slice(0, maxBases).forEach(b =>
+          allIds.push(...shuffle(b.tokenIds).slice(0, perBase))
+        );
+        const uniqueIds = [...new Set(allIds)];
+        setStatus(`Prefetching ${uniqueIds.length} cards…`);
+
+        const cached = [];
+        const CHUNK = 20;
+        for (let i = 0; i < uniqueIds.length; i += CHUNK) {
+          const chunk = uniqueIds.slice(i, i + CHUNK);
+          const results = await Promise.all(
+            chunk.map(id => cpi(`/tokens/${id}/metadata`).then(d => d?.data || null).catch(() => null))
+          );
+          results.forEach(m => { if (m) cached.push(m); });
+          setStatus(`Loading cards… ${Math.min(i + CHUNK, uniqueIds.length)}/${uniqueIds.length}`);
+        }
+
+        tokenCache.current = cached;
+        setUsedMock(false);
+        setStatus(`Ready — ${cached.length} cards loaded.`);
         setPhase("mode-select");
       } catch (e) {
         console.warn(`Load attempt ${attempt} failed:`, e.message);
@@ -1193,8 +1226,8 @@ export default function App() {
           return load(attempt + 1);
         }
         // After 4 attempts fall back to mock
-        const mockPools = MOCK_BASES.map(base => ({ base, tokenIds: Array.from({ length: 8 }, (_, i) => i + MOCK_BASES.indexOf(base) * 10 + 1000) }));
-        setBasePools(mockPools); setUsedMock(true);
+        tokenCache.current = buildMockDeck();
+        setUsedMock(true);
         setPhase("mode-select");
       }
     }
@@ -1202,28 +1235,16 @@ export default function App() {
   }, []);
 
   async function buildDeck(playerNames) {
-    setPhase("loading"); setStatus("Dealing the deck…");
+    setPhase("loading"); setStatus("Shuffling the deck…");
     usedRotIds = new Set();
     try {
       let tokens = [];
-      if (usedMock) {
+      if (usedMock || tokenCache.current.length === 0) {
         tokens = buildMockDeck();
       } else {
-        const shuffledBases = [...basePools].sort(() => Math.random() - 0.5);
-        const perBase = 5; // 5 per base → sets of 3 still possible even if 1-2 metadata fail
-        const maxBases = Math.floor(DECK_SIZE / perBase);
-        const sampledIds = [];
-        shuffledBases.slice(0, maxBases).forEach(b => sampledIds.push(...shuffle(b.tokenIds).slice(0, perBase)));
-        const finalIds = shuffle(sampledIds).slice(0, DECK_SIZE);
-        setStatus(`Fetching ${finalIds.length} tokens…`);
-        const CHUNK = 15;
-        for (let i = 0; i < finalIds.length; i += CHUNK) {
-          const chunk = finalIds.slice(i, i + CHUNK);
-          const results = await Promise.all(chunk.map(id => cpi(`/tokens/${id}/metadata`).then(d => d?.data || null).catch(() => null)));
-          results.forEach(m => { if (m) tokens.push(m); });
-          setStatus(`Loading cards… ${Math.min(i + CHUNK, finalIds.length)}/${finalIds.length}`);
-        }
-        if (tokens.length < playerNames.length * 2) throw new Error("Not enough cards fetched. Try again.");
+        // Use the prefetched cache — no API calls needed at deal time
+        tokens = shuffle([...tokenCache.current]);
+        if (tokens.length < playerNames.length * 2) throw new Error("Not enough cards loaded. Please refresh.");
       }
       const shuffled = shuffle(tokens);
       const handSize = Math.min(7, Math.floor(shuffled.length / playerNames.length));
