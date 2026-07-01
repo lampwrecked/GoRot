@@ -648,6 +648,11 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
     const newSetsFound = [];
 
     if (matching.length > 0) {
+      // Snapshot the matched cards BEFORE mutating state — so the modal
+      // shows them as they were in the opponent's hand, not already merged
+      // into the current player's hand.
+      const matchedSnapshot = matching.map(t => ({ ...t }));
+
       let ps = players.map((p, i) => {
         if (i === useTarget) return { ...p, hand: p.hand.filter(t => !matching.find(m => m.id === t.id)) };
         if (i === cur) return { ...p, hand: [...p.hand, ...matching] };
@@ -660,7 +665,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
       pendingModals.push({
         type: "match",
         asker: me.name, target: them.name, base: useBase,
-        cards: matching, score: matchScore, bonusDesc: [],
+        cards: matchedSnapshot, score: matchScore, bonusDesc: [],
       });
 
       newSetsFound.forEach(({ player, set }) => {
@@ -670,8 +675,22 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
 
       setPlayers(ps); setSelBase(null);
 
+      // Only end if pile was already empty before this turn started —
+      // a match doesn't consume the pile, so check pile (not p2).
+      // The real end trigger is performDraw when p2 becomes empty.
+      // We check here only for the edge case where pile hit 0 from a
+      // previous draw and a match happens on the following go-again turn.
       if (pile.length === 0) {
-        pendingModals.push({ type: "gameend", players: ps });
+        // Score all remaining hands before ending
+        let finalPs = ps;
+        const finalSets = [];
+        finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
+        setPlayers(finalPs);
+        finalSets.forEach(({ player, set }) => {
+          addLog(`${player} SET: ${set.tokens.length}× ${set.base} = ${set.score}pts`);
+          pendingModals.push({ type: "set", player, set });
+        });
+        pendingModals.push({ type: "gameend", players: finalPs });
       }
 
       modalQueue.current = pendingModals;
@@ -1060,20 +1079,20 @@ export default function App() {
         tokens = buildMockDeck();
       } else {
         const shuffledBases = [...basePools].sort(() => Math.random() - 0.5);
-        const perBase = 4;
+        const perBase = 5; // 5 per base → sets of 3 still possible even if 1-2 metadata fail
         const maxBases = Math.floor(DECK_SIZE / perBase);
         const sampledIds = [];
         shuffledBases.slice(0, maxBases).forEach(b => sampledIds.push(...shuffle(b.tokenIds).slice(0, perBase)));
         const finalIds = shuffle(sampledIds).slice(0, DECK_SIZE);
         setStatus(`Fetching ${finalIds.length} tokens…`);
-        const CHUNK = 12;
+        const CHUNK = 15;
         for (let i = 0; i < finalIds.length; i += CHUNK) {
           const chunk = finalIds.slice(i, i + CHUNK);
           const results = await Promise.all(chunk.map(id => cpi(`/tokens/${id}/metadata`).then(d => d?.data || null).catch(() => null)));
           results.forEach(m => { if (m) tokens.push(m); });
           setStatus(`Loading cards… ${Math.min(i + CHUNK, finalIds.length)}/${finalIds.length}`);
         }
-        if (tokens.length < playerNames.length * 3) throw new Error("Not enough cards. Try again.");
+        if (tokens.length < playerNames.length * 2) throw new Error("Not enough cards fetched. Try again.");
       }
       const shuffled = shuffle(tokens);
       const handSize = Math.min(7, Math.floor(shuffled.length / playerNames.length));
