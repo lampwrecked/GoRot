@@ -1,0 +1,16 @@
+{
+  "name": "gorot",
+  "private": true,
+  "dependencies": {
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "vite": "^5",
+    "@vitejs/plugin-react": "^4"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  }
+}
