@@ -5,6 +5,7 @@ const BASE_URL = "https://cpi.brainrot.works/v1";
 const IMG_BASE = "https://cpi.brainrot.works";
 const DECK_SIZE = 56;
 const SET_THRESHOLD = 3;
+const TOTAL_ROUNDS = 10;
 
 async function cpi(path) {
   const r = await fetch(`${BASE_URL}${path}`, {
@@ -111,7 +112,7 @@ function Loader({ msg }) {
   return (
     <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: 24, fontFamily: mono }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes sl{0%{transform:translateX(-200%)}100%{transform:translateX(500%)}}@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}@keyframes fadein{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}@keyframes cardpop{from{opacity:0;transform:translateY(14px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}`}</style>
-      <h1 style={{ fontFamily: imp, fontSize: 64, lineHeight: 1, margin: 0, textAlign: "center" }}>BRAIN<span style={{ color: C.acid }}>ROT</span></h1>
+      <h1 style={{ fontFamily: imp, fontSize: 64, lineHeight: 1, margin: 0, textAlign: "center" }}>GO <span style={{ color: C.acid }}>ROT</span></h1>
       <p style={{ color: C.muted, fontSize: 9, letterSpacing: 3, textTransform: "uppercase", margin: 0 }}>GO ROT</p>
       <div style={{ width: 180, height: 2, background: C.corrupt, borderRadius: 1, overflow: "hidden" }}>
         <div style={{ width: "40%", height: "100%", background: C.acid, animation: "sl 1.3s ease-in-out infinite" }} />
@@ -324,7 +325,7 @@ function ModeSelect({ onPick }) {
   return (
     <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22, padding: "28px 16px", fontFamily: mono }}>
       <div style={{ textAlign: "center" }}>
-        <p style={{ color: C.muted, fontSize: 9, letterSpacing: 4, textTransform: "uppercase", margin: "0 0 6px" }}>BRAINROT</p>
+        <p style={{ color: C.muted, fontSize: 9, letterSpacing: 4, textTransform: "uppercase", margin: "0 0 6px" }}>NUCLEAR SAMURAI</p>
         <h1 style={{ fontFamily: imp, fontSize: "min(64px,16vw)", lineHeight: 0.9, margin: 0 }}>
           <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
         </h1>
@@ -563,17 +564,53 @@ function CardViewer({ token, onClose }) {
   );
 }
 
+// ── HAND OVER MODAL ───────────────────────────────────────────────────────
+// Shown when Rottington asks and the human has matching cards.
+// The human must tap each card to hand it over.
+function HandOverModal({ asker, base, cards, onConfirm }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 99, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.card, border: `1px solid ${C.mag}`, borderRadius: 16, padding: "24px 20px", maxWidth: 360, width: "100%", textAlign: "center", display: "flex", flexDirection: "column", gap: 16, animation: "fadein 0.2s ease", boxShadow: "0 0 28px rgba(255,45,120,0.2)" }}>
+        <div>
+          <p style={{ color: C.muted, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", margin: "0 0 6px" }}>Rottington asks</p>
+          <h2 style={{ fontFamily: imp, fontSize: 32, color: C.mag, margin: 0, lineHeight: 1 }}>Do you have any <span style={{ color: C.chalk }}>{base}</span>?</h2>
+        </div>
+        <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: 0 }}>
+          You do! Hand over your <b style={{ color: C.acid }}>{cards.length}× {base}</b> to Rottington.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+          {cards.map((card, i) => (
+            <div key={card.id} style={{ animation: `cardpop 0.25s ease ${i * 0.07}s both` }}>
+              <NFTCard token={card} fluid />
+            </div>
+          ))}
+        </div>
+        <button onClick={onConfirm}
+          style={{ background: C.mag, border: "none", borderRadius: 8, color: "white", fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
+          HAND OVER
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── GAME END MODAL ────────────────────────────────────────────────────────
-function GameEndModal({ players, onDismiss }) {
+function GameEndModal({ players, round, totalRounds, onNext, onEnd }) {
   const sorted = [...players].sort((a, b) => b.score - a.score);
   const leader = sorted[0];
+  const isLastRound = round >= totalRounds;
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.93)", zIndex: 99, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: C.card, border: `2px solid ${C.acid}`, borderRadius: 16, padding: "28px 20px", maxWidth: 320, width: "100%", textAlign: "center", display: "flex", flexDirection: "column", gap: 16, animation: "fadein 0.2s ease", boxShadow: "0 0 32px rgba(57,255,20,0.2)" }}>
         <div>
-          <p style={{ color: C.muted, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", margin: "0 0 6px" }}>Pile empty — game over</p>
-          <h2 style={{ fontFamily: imp, fontSize: 38, color: C.acid, margin: 0, lineHeight: 1 }}>{leader.name}</h2>
-          <p style={{ fontFamily: imp, fontSize: 18, color: C.chalk, margin: "4px 0 0", letterSpacing: 1 }}>IS WINNING</p>
+          <p style={{ color: C.muted, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", margin: "0 0 6px" }}>
+            Round {round} of {totalRounds} complete
+          </p>
+          <h2 style={{ fontFamily: imp, fontSize: 32, color: C.acid, margin: 0, lineHeight: 1 }}>{leader.name}</h2>
+          <p style={{ fontFamily: imp, fontSize: 16, color: C.chalk, margin: "4px 0 0", letterSpacing: 1 }}>
+            {isLastRound ? "WINS!" : "IS LEADING"}
+          </p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {sorted.map((p, i) => (
@@ -583,9 +620,15 @@ function GameEndModal({ players, onDismiss }) {
             </div>
           ))}
         </div>
-        <button onClick={onDismiss} style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
-          SEE FINAL SCORES
-        </button>
+        {isLastRound ? (
+          <button onClick={onEnd} style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
+            SEE FINAL SCORES
+          </button>
+        ) : (
+          <button onClick={onNext} style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
+            NEXT ROUND →
+          </button>
+        )}
       </div>
     </div>
   );
@@ -595,6 +638,7 @@ function GameEndModal({ players, onDismiss }) {
 function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedMock, onEnd }) {
   const [players, setPlayers] = useState(init);
   const [pile, setPile] = useState(initPile);
+  const [round, setRound] = useState(1);
   const [cur, setCur] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [selBase, setSelBase] = useState(null);
@@ -605,15 +649,34 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
   const [botThinking, setBotThinking] = useState(false);
   const [viewedCard, setViewedCard] = useState(null);
 
-  const BOT_IDX = init.length - 1; // bot is always last player
+  const BOT_IDX = init.length - 1;
   const isBotTurn = isBotMode && cur === BOT_IDX;
 
-  // Modal state: null | { type: "rot", ... } | { type: "match", ... } | { type: "set", ... }
   const [modal, setModal] = useState(null);
-  // Queue of modals to show in sequence
   const modalQueue = useRef([]);
 
   const addLog = h => setLog(l => [h, ...l.slice(0, 20)]);
+
+  function startNewRound(currentPlayers, nextRound) {
+    // Redeal from the full token pool, preserving cumulative scores
+    const shuffled = shuffle([...allTokens]);
+    const handSize = Math.min(7, Math.floor(shuffled.length / currentPlayers.length));
+    const newPlayers = currentPlayers.map((p, i) => ({
+      ...p,
+      hand: shuffled.slice(i * handSize, (i + 1) * handSize),
+      sets: [], // clear sets for the new round (scores carry over)
+    }));
+    const newPile = shuffled.slice(currentPlayers.length * handSize);
+    setPlayers(newPlayers);
+    setPile(newPile);
+    setRound(nextRound);
+    setCur(0);
+    setRevealed(false);
+    setSelBase(null);
+    setModal(null);
+    modalQueue.current = [];
+    addLog(`── Round ${nextRound} begins ──`);
+  }
 
   function showNext() {
     if (modalQueue.current.length > 0) {
@@ -648,11 +711,16 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
     const newSetsFound = [];
 
     if (matching.length > 0) {
-      // Snapshot the matched cards BEFORE mutating state — so the modal
-      // shows them as they were in the opponent's hand, not already merged
-      // into the current player's hand.
       const matchedSnapshot = matching.map(t => ({ ...t }));
 
+      // When Rottington is asking and the human has cards, pause and ask
+      // the human to physically hand them over rather than auto-transferring.
+      if (isBotMode && cur === BOT_IDX) {
+        setModal({ type: "handover", asker: me.name, base: useBase, cards: matchedSnapshot, useTarget });
+        return;
+      }
+
+      // Human-asks-human or human-asks-bot: transfer immediately
       let ps = players.map((p, i) => {
         if (i === useTarget) return { ...p, hand: p.hand.filter(t => !matching.find(m => m.id === t.id)) };
         if (i === cur) return { ...p, hand: [...p.hand, ...matching] };
@@ -718,6 +786,50 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
     }
   }
 
+  // Called when human taps "HAND OVER" after Rottington asks them
+  function confirmHandOver() {
+    const { base, cards, useTarget } = modal;
+    const me = players[cur]; // Rottington
+    setModal(null);
+
+    const matching = cards;
+    const pendingModals = [];
+    const newSetsFound = [];
+
+    let ps = players.map((p, i) => {
+      if (i === useTarget) return { ...p, hand: p.hand.filter(t => !matching.find(m => m.id === t.id)) };
+      if (i === cur) return { ...p, hand: [...p.hand, ...matching] };
+      return p;
+    });
+    ps = applyCheck(ps, cur, newSetsFound);
+    addLog(`${me.name} got ${matching.length}× ${base} from ${players[useTarget].name}`);
+
+    pendingModals.push({
+      type: "match",
+      asker: me.name, target: players[useTarget].name, base,
+      cards: matching, score: matching.length, bonusDesc: [],
+    });
+
+    newSetsFound.forEach(({ player, set }) => {
+      addLog(`${player} SET: ${set.tokens.length}× ${set.base} = ${set.score}pts`);
+      pendingModals.push({ type: "set", player, set });
+    });
+
+    setPlayers(ps); setSelBase(null);
+
+    if (pile.length === 0) {
+      let finalPs = ps;
+      const finalSets = [];
+      finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
+      setPlayers(finalPs);
+      finalSets.forEach(({ player, set }) => pendingModals.push({ type: "set", player, set }));
+      pendingModals.push({ type: "gameend", players: finalPs });
+    }
+
+    modalQueue.current = pendingModals;
+    showNext();
+  }
+
   // Called when the player taps the draw pile during a Go Rot modal
   function performDraw() {
     let ps = [...players]; let p2 = [...pile];
@@ -771,7 +883,11 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
 
   function dismissModal() {
     if (modal?.type === "gameend") {
-      onEnd(modal.players);
+      if (round >= TOTAL_ROUNDS) {
+        onEnd(modal.players);
+      } else {
+        startNewRound(modal.players, round + 1);
+      }
       return;
     }
     if (modal?.type === "match" && modalQueue.current.length === 0) {
@@ -815,8 +931,17 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
 
       {viewedCard && <CardViewer token={viewedCard} onClose={() => setViewedCard(null)} />}
 
+      {modal?.type === "handover" && (
+        <HandOverModal asker={modal.asker} base={modal.base} cards={modal.cards} onConfirm={confirmHandOver} />
+      )}
       {modal?.type === "gameend" && (
-        <GameEndModal players={modal.players} onDismiss={dismissModal} />
+        <GameEndModal
+          players={modal.players}
+          round={round}
+          totalRounds={TOTAL_ROUNDS}
+          onNext={() => startNewRound(modal.players, round + 1)}
+          onEnd={() => onEnd(modal.players)}
+        />
       )}
       {modal?.type === "rot" && (
         <RotModal
@@ -838,7 +963,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
         <div>
           <div style={{ fontFamily: imp, fontSize: 15, color: C.acid, letterSpacing: 1 }}>BRAINROT GO ROT</div>
           <div style={{ fontSize: 10, color: C.muted }}>
-            Pile: {pile.length} · {isBotTurn ? <span style={{ color: C.mag }}>🤖 Rottington is thinking…</span> : `${me.name}'s turn`}
+            Round {round}/{TOTAL_ROUNDS} · Pile: {pile.length} · {isBotTurn ? <span style={{ color: C.mag }}>🤖 Rottington is thinking…</span> : `${me.name}'s turn`}
           </div>
         </div>
         <button onClick={() => setShowScores(s => !s)}
@@ -1027,7 +1152,7 @@ function buildMockDeck() {
 // ── ROOT ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [phase, setPhase] = useState("loading");
-  const [status, setStatus] = useState("Connecting to BRAINROT chain…");
+  const [status, setStatus] = useState("Connecting to the collection…");
   const [basePools, setBasePools] = useState([]);
   const [usedMock, setUsedMock] = useState(false);
   const [mode, setMode] = useState(null); // "local" | "bot" | "invite"
@@ -1037,9 +1162,9 @@ export default function App() {
   const [endPlayers, setEndPlayers] = useState([]);
 
   useEffect(() => {
-    async function load() {
+    async function load(attempt = 1) {
       try {
-        setStatus("Fetching Base trait catalog…");
+        setStatus(attempt > 1 ? `Retrying… (attempt ${attempt})` : "Fetching card catalog…");
         const td = await cpi("/traits?type=Base");
         const bases = td?.data?.[0]?.values || [];
         if (!bases.length) throw new Error("No bases found");
@@ -1061,7 +1186,13 @@ export default function App() {
         setStatus(`Ready — ${pools.length} creature types.`);
         setPhase("mode-select");
       } catch (e) {
-        console.warn("API failed:", e.message);
+        console.warn(`Load attempt ${attempt} failed:`, e.message);
+        if (attempt < 4) {
+          setStatus(`Loading… (${attempt}/4)`);
+          await new Promise(r => setTimeout(r, 1200 * attempt));
+          return load(attempt + 1);
+        }
+        // After 4 attempts fall back to mock
         const mockPools = MOCK_BASES.map(base => ({ base, tokenIds: Array.from({ length: 8 }, (_, i) => i + MOCK_BASES.indexOf(base) * 10 + 1000) }));
         setBasePools(mockPools); setUsedMock(true);
         setPhase("mode-select");
