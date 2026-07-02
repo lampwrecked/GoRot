@@ -1159,7 +1159,8 @@ export default function App() {
   const [gameAllTokens, setGameAllTokens] = useState([]);
   const [endPlayers, setEndPlayers] = useState([]);
 
-  const [tokenCache, setTokenCache] = useState([]);
+  const tokenCacheRef = useRef([]);
+  const [tokenCount, setTokenCount] = useState(0); // triggers re-render when cache fills
 
   useEffect(() => {
     async function load(attempt = 1) {
@@ -1212,11 +1213,11 @@ export default function App() {
           setStatus(`Loading cards… ${Math.min(i + CHUNK, uniqueIds.length)}/${uniqueIds.length}`);
         }
 
-        setTokenCache(cached);
+        tokenCacheRef.current = cached;
+        setTokenCount(cached.length);
         setProgress(100);
         setCardsReady(true);
         setStatus(`${cached.length} cards ready.`);
-        // Small delay so React flushes the cache state before transitioning
         await new Promise(r => setTimeout(r, 100));
         setPhase("mode-select");
       } catch (e) {
@@ -1232,20 +1233,24 @@ export default function App() {
   }, []);
 
   async function buildDeck(playerNames) {
-    if (!cardsReady || tokenCache.length < 2) return;
-    usedRotIds = new Set();
-    try {
-      const tokens = shuffle([...tokenCache]);
-      const shuffled = shuffle(tokens);
-      const handSize = Math.min(7, Math.floor(shuffled.length / playerNames.length));
-      const players = playerNames.map((name, i) => ({ name, hand: shuffled.slice(i * handSize, (i + 1) * handSize), sets: [], score: 0 }));
-      setGamePlayers(players);
-      setGamePile(shuffled.slice(playerNames.length * handSize));
-      setGameAllTokens(tokens);
-      setPhase("game");
-    } catch (e) {
-      console.error("buildDeck error:", e);
+    const cache = tokenCacheRef.current;
+    if (cache.length < 2) {
+      console.warn("buildDeck called but cache empty, length:", cache.length);
+      return;
     }
+    usedRotIds = new Set();
+    const tokens = shuffle([...cache]);
+    const shuffled = shuffle(tokens);
+    const handSize = Math.min(7, Math.floor(shuffled.length / playerNames.length));
+    const players = playerNames.map((name, i) => ({
+      name,
+      hand: shuffled.slice(i * handSize, (i + 1) * handSize),
+      sets: [], score: 0
+    }));
+    setGamePlayers(players);
+    setGamePile(shuffled.slice(playerNames.length * handSize));
+    setGameAllTokens(tokens);
+    setPhase("game");
   }
 
   if (phase === "loading") return <Loader msg={status} progress={progress} />;
@@ -1263,7 +1268,7 @@ export default function App() {
   if (phase === "lobby") return (
     <Lobby
       onStart={buildDeck}
-      ready={cardsReady}
+      ready={cardsReady && tokenCount > 0}
       progress={progress}
       mode={mode}
       onBack={() => setPhase("mode-select")}
