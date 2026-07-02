@@ -108,7 +108,7 @@ function CardBack({ size = 28 }) {
 }
 
 // ── LOADING ───────────────────────────────────────────────────────────────
-function Loader({ msg }) {
+function Loader({ msg, progress = 0 }) {
   return (
     <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: 24, fontFamily: mono }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes sl{0%{transform:translateX(-200%)}100%{transform:translateX(500%)}}@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}@keyframes fadein{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}@keyframes cardpop{from{opacity:0;transform:translateY(14px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}`}</style>
@@ -116,10 +116,22 @@ function Loader({ msg }) {
         <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
       </h1>
 
-      <div style={{ width: 180, height: 2, background: C.corrupt, borderRadius: 1, overflow: "hidden" }}>
-        <div style={{ width: "40%", height: "100%", background: C.acid, animation: "sl 1.3s ease-in-out infinite" }} />
+      {/* Progress bar */}
+      <div style={{ width: 260, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ width: "100%", height: 4, background: C.corrupt, borderRadius: 2, overflow: "hidden" }}>
+          {progress > 0 ? (
+            <div style={{ width: `${progress}%`, height: "100%", background: C.acid, borderRadius: 2, transition: "width 0.4s ease" }} />
+          ) : (
+            <div style={{ width: "40%", height: "100%", background: C.acid, borderRadius: 2, animation: "sl 1.3s ease-in-out infinite" }} />
+          )}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <p style={{ color: C.muted, fontSize: 10, margin: 0, lineHeight: 1.6, flex: 1 }}>{msg}</p>
+          {progress > 0 && (
+            <p style={{ color: C.acid, fontSize: 10, margin: 0, fontFamily: imp }}>{progress}%</p>
+          )}
+        </div>
       </div>
-      <p style={{ color: C.muted, fontSize: 11, textAlign: "center", maxWidth: 280, lineHeight: 1.8, margin: 0 }}>{msg}</p>
     </div>
   );
 }
@@ -439,15 +451,17 @@ function Lobby({ onStart, ready, mode, onBack }) {
   return (
     <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: "24px 16px", fontFamily: mono }}>
       <div style={{ textAlign: "center" }}>
-        <p style={{ color: C.muted, fontSize: 9, letterSpacing: 4, textTransform: "uppercase", margin: "0 0 6px" }}>
-          {isBot ? "VS. ROTTINGTON" : "PASS & PLAY"}
-        </p>
         <h1 style={{ fontFamily: imp, fontSize: "min(72px,18vw)", lineHeight: 0.9, margin: 0 }}>
           <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
         </h1>
       </div>
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 12 }}>
-        <p style={{ color: C.acid, fontFamily: imp, fontSize: 13, letterSpacing: 1, margin: 0 }}>PLAYERS</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <p style={{ color: C.acid, fontFamily: imp, fontSize: 13, letterSpacing: 1, margin: 0 }}>PLAYERS</p>
+          <span style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase" }}>
+            {isBot ? "VS. ROTTINGTON" : "PASS & PLAY"}
+          </span>
+        </div>
         {names.map((n, i) => (
           <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span style={{ color: C.muted, fontFamily: imp, fontSize: 16, minWidth: 16 }}>{i + 1}</span>
@@ -1120,6 +1134,7 @@ function EndScreen({ players, onRestart }) {
 export default function App() {
   const [phase, setPhase] = useState("loading");
   const [status, setStatus] = useState("Connecting to the collection…");
+  const [progress, setProgress] = useState(0); // 0-100
   const [basePools, setBasePools] = useState([]);
   const [mode, setMode] = useState(null); // "local" | "bot" | "invite"
   const [gamePlayers, setGamePlayers] = useState([]);
@@ -1132,14 +1147,16 @@ export default function App() {
   useEffect(() => {
     async function load(attempt = 1) {
       try {
-        setStatus(attempt > 1 ? `Retrying… (${attempt}/4)` : "Fetching card catalog…");
+        setProgress(2);
+        setStatus(attempt > 1 ? `Retrying… (${attempt})` : "Fetching card catalog…");
         const td = await cpi("/traits?type=Base");
         const bases = td?.data?.[0]?.values || [];
         if (!bases.length) throw new Error("No bases found");
         const playable = bases.filter(b => b.count >= 4);
-        setStatus(`${playable.length} Base types. Loading pools…`);
+        setProgress(10);
+        setStatus(`${playable.length} Base types found…`);
 
-        // Fetch token ID pools per base
+        // Fetch token ID pools per base (counts as 10→30% of progress)
         const pools = [];
         const take = Math.min(playable.length, 18);
         for (let i = 0; i < take; i++) {
@@ -1149,13 +1166,14 @@ export default function App() {
             const ids = d?.data?.token_ids || [];
             if (ids.length >= 3) pools.push({ base: b.value, tokenIds: ids });
           } catch { /* skip */ }
+          setProgress(10 + Math.round(((i + 1) / take) * 20));
           if ((i + 1) % 3 === 0) setStatus(`Loading pools… ${i + 1}/${take}`);
         }
         if (!pools.length) throw new Error("No pools found");
         setBasePools(pools);
+        setProgress(30);
 
-        // Prefetch a large token metadata cache in the background so
-        // deals are instant. Sample generously — 8 per base type.
+        // Prefetch card metadata (30→100% of progress)
         const perBase = 8;
         const maxBases = Math.min(pools.length, 20);
         const allIds = [];
@@ -1163,7 +1181,6 @@ export default function App() {
           allIds.push(...shuffle(b.tokenIds).slice(0, perBase))
         );
         const uniqueIds = [...new Set(allIds)];
-        setStatus(`Prefetching ${uniqueIds.length} cards…`);
 
         const cached = [];
         const CHUNK = 20;
@@ -1173,16 +1190,20 @@ export default function App() {
             chunk.map(id => cpi(`/tokens/${id}/metadata`).then(d => d?.data || null).catch(() => null))
           );
           results.forEach(m => { if (m) cached.push(m); });
+          const pct = 30 + Math.round(((i + CHUNK) / uniqueIds.length) * 70);
+          setProgress(Math.min(pct, 99));
           setStatus(`Loading cards… ${Math.min(i + CHUNK, uniqueIds.length)}/${uniqueIds.length}`);
         }
 
         tokenCache.current = cached;
-        setStatus(`Ready — ${cached.length} cards loaded.`);
+        setProgress(100);
+        setStatus(`${cached.length} cards ready.`);
         setPhase("mode-select");
       } catch (e) {
         console.warn(`Load attempt ${attempt} failed:`, e.message);
         const delay = Math.min(1200 * attempt, 8000);
-        setStatus(`Connecting… retrying in ${Math.round(delay/1000)}s`);
+        setStatus(`Connecting… retrying in ${Math.round(delay / 1000)}s`);
+        setProgress(0);
         await new Promise(r => setTimeout(r, delay));
         return load(attempt + 1); // retry forever — never fall back to mock
       }
@@ -1211,7 +1232,7 @@ export default function App() {
     }
   }
 
-  if (phase === "loading") return <Loader msg={status} />;
+  if (phase === "loading") return <Loader msg={status} progress={progress} />;
   if (phase === "mode-select") return <ModeSelect onPick={(m) => {
     setMode(m);
     if (m === "invite") setPhase("invite");
