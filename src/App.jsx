@@ -3,9 +3,9 @@ import React, { useState, useEffect, useRef } from "react";
 const API_KEY = "cpi_live_d5f453d6be82d02451f78cec7507763caea413d5ff902cd5";
 const BASE_URL = "https://cpi.brainrot.works/v1";
 const IMG_BASE = "https://cpi.brainrot.works";
-const DECK_SIZE = 56;
+const DECK_SIZE = 30; // smaller deck = faster rounds (~16 card pile for 2 players)
 const SET_THRESHOLD = 3;
-const TOTAL_ROUNDS = 10;
+const TURNS_PER_PLAYER = 10;
 
 // Module-level store — completely outside React, no closure issues ever
 let TOKEN_STORE = [];
@@ -672,22 +672,16 @@ function HandOverModal({ asker, base, cards, onConfirm }) {
 }
 
 // ── GAME END MODAL ────────────────────────────────────────────────────────
-function GameEndModal({ players, round, totalRounds, onNext, onEnd }) {
+function GameEndModal({ players, turnsLeft, onEnd }) {
   const sorted = [...players].sort((a, b) => b.score - a.score);
   const leader = sorted[0];
-  const isLastRound = round >= totalRounds;
-
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.93)", zIndex: 99, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: C.card, border: `2px solid ${C.acid}`, borderRadius: 16, padding: "28px 20px", maxWidth: 320, width: "100%", textAlign: "center", display: "flex", flexDirection: "column", gap: 16, animation: "fadein 0.2s ease", boxShadow: "0 0 32px rgba(57,255,20,0.2)" }}>
         <div>
-          <p style={{ color: C.muted, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", margin: "0 0 6px" }}>
-            Round {round} of {totalRounds} complete
-          </p>
-          <h2 style={{ fontFamily: imp, fontSize: 32, color: C.acid, margin: 0, lineHeight: 1 }}>{leader.name}</h2>
-          <p style={{ fontFamily: imp, fontSize: 16, color: C.chalk, margin: "4px 0 0", letterSpacing: 1 }}>
-            {isLastRound ? "WINS!" : "IS LEADING"}
-          </p>
+          <p style={{ color: C.muted, fontSize: 10, letterSpacing: 3, textTransform: "uppercase", margin: "0 0 6px" }}>Game Over</p>
+          <h2 style={{ fontFamily: imp, fontSize: 36, color: C.acid, margin: 0, lineHeight: 1 }}>{leader.name}</h2>
+          <p style={{ fontFamily: imp, fontSize: 18, color: C.chalk, margin: "4px 0 0", letterSpacing: 1 }}>WINS!</p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {sorted.map((p, i) => (
@@ -697,15 +691,9 @@ function GameEndModal({ players, round, totalRounds, onNext, onEnd }) {
             </div>
           ))}
         </div>
-        {isLastRound ? (
-          <button onClick={onEnd} style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
-            SEE FINAL SCORES
-          </button>
-        ) : (
-          <button onClick={onNext} style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
-            NEXT ROUND →
-          </button>
-        )}
+        <button onClick={onEnd} style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
+          SEE FINAL SCORES
+        </button>
       </div>
     </div>
   );
@@ -715,7 +703,7 @@ function GameEndModal({ players, round, totalRounds, onNext, onEnd }) {
 function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd }) {
   const [players, setPlayers] = useState(init);
   const [pile, setPile] = useState(initPile);
-  const [round, setRound] = useState(1);
+  const [turnCounts, setTurnCounts] = useState({}); // playerIdx -> number of asks taken
   const [cur, setCur] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [selBase, setSelBase] = useState(null);
@@ -739,27 +727,6 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
   // Keep refs in sync with state
   useEffect(() => { playersRef.current = players; }, [players]);
   useEffect(() => { pileRef.current = pile; }, [pile]);
-
-  function startNewRound(currentPlayers, nextRound) {
-    // Redeal from the full token pool, preserving cumulative scores
-    const shuffled = shuffle([...allTokens]);
-    const handSize = Math.min(7, Math.floor(shuffled.length / currentPlayers.length));
-    const newPlayers = currentPlayers.map((p, i) => ({
-      ...p,
-      hand: shuffled.slice(i * handSize, (i + 1) * handSize),
-      sets: [], // clear sets for the new round (scores carry over)
-    }));
-    const newPile = shuffled.slice(currentPlayers.length * handSize);
-    setPlayers(newPlayers);
-    setPile(newPile);
-    setRound(nextRound);
-    setCur(0);
-    setRevealed(false);
-    setSelBase(null);
-    setModal(null);
-    modalQueue.current = [];
-    addLog(`── Round ${nextRound} begins ──`);
-  }
 
   function showNext() {
     if (modalQueue.current.length > 0) {
@@ -791,6 +758,13 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
     const me = currentPlayers[cur]; const them = currentPlayers[useTarget];
     if (!me.hand.some(t => getBase(t) === useBase)) { setAskErr(`You have no ${useBase}.`); return; }
     setAskErr("");
+
+    // Count this as one of the current player's turns
+    const newTurnCounts = { ...turnCounts, [cur]: (turnCounts[cur] || 0) + 1 };
+    setTurnCounts(newTurnCounts);
+
+    // Check if all players have used all their turns
+    const allDone = currentPlayers.every((_, i) => (newTurnCounts[i] || 0) >= TURNS_PER_PLAYER);
 
     const matching = them.hand.filter(t => getBase(t) === useBase);
     const pendingModals = [];
@@ -827,7 +801,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
       setPlayers(ps); setSelBase(null);
 
-      if (currentPile.length === 0) {
+      if (allDone) {
         let finalPs = ps;
         const finalSets = [];
         finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
@@ -889,7 +863,9 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
     setPlayers(ps); setSelBase(null);
 
-    if (currentPile.length === 0) {
+    // Check if game should end (turn counts already updated by ask())
+    const gameDone = currentPlayers.every((_, i) => (turnCounts[i] || 0) >= TURNS_PER_PLAYER);
+    if (gameDone) {
       let finalPs = ps;
       const finalSets = [];
       finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
@@ -924,20 +900,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
     const setModals = newSetsFound.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot }));
 
-    if (p2.length === 0) {
-      let finalPs = ps;
-      const finalSets = [];
-      finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
-      setPlayers(finalPs);
-      const endModals = [
-        ...finalSets.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot })),
-        { type: "gameend", players: finalPs }
-      ];
-      modalQueue.current = endModals;
-      showNext();
-      return;
-    }
-
+    // If pile runs out mid-game, just continue — game ends by turn count not pile
     if (setModals.length > 0) {
       modalQueue.current = setModals;
       showNext();
@@ -952,11 +915,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
   function dismissModal() {
     if (modal?.type === "gameend") {
-      if (round >= TOTAL_ROUNDS) {
-        onEnd(modal.players);
-      } else {
-        startNewRound(modal.players, round + 1);
-      }
+      onEnd(modal.players);
       return;
     }
     if (modal?.type === "match" && modalQueue.current.length === 0) {
@@ -1006,9 +965,6 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
       {modal?.type === "gameend" && (
         <GameEndModal
           players={modal.players}
-          round={round}
-          totalRounds={TOTAL_ROUNDS}
-          onNext={() => startNewRound(modal.players, round + 1)}
           onEnd={() => onEnd(modal.players)}
         />
       )}
@@ -1034,7 +990,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
             <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
           </div>
           <div style={{ fontSize: 10, color: C.muted }}>
-            Round {round}/{TOTAL_ROUNDS} · Pile: {pile.length} · {isBotTurn ? <span style={{ color: C.mag }}>🤖 Rottington is thinking…</span> : `${me.name}'s turn`}
+            Turn {(turnCounts[cur] || 0) + 1}/{TURNS_PER_PLAYER} · {isBotTurn ? <span style={{ color: C.mag }}>🤖 Rottington is thinking…</span> : `${me.name}'s turn`}
           </div>
         </div>
         <button onClick={() => setShowScores(s => !s)}
@@ -1250,9 +1206,9 @@ export default function App() {
         return;
       }
 
-      // Step 3: fetch metadata for 6 tokens per base type (sequential, not parallel — avoids rate limits)
+      // Step 3: fetch metadata for 4 tokens per base type (sequential, not parallel — avoids rate limits)
       if (cancelled) return;
-      const perBase = 6;
+      const perBase = 4;
       const toFetch = [];
       shuffle(pools).forEach(p => toFetch.push(...shuffle(p.ids).slice(0, perBase)));
       const uniqueIds = [...new Set(toFetch)];
@@ -1315,7 +1271,7 @@ export default function App() {
     }
     usedRotIds = new Set();
     const tokens = shuffle([...TOKEN_STORE]);
-    const handSize = Math.min(7, Math.floor(tokens.length / playerNames.length));
+    const handSize = Math.min(5, Math.floor(tokens.length / playerNames.length));
     const players = playerNames.map((name, i) => ({
       name,
       hand: tokens.slice(i * handSize, (i + 1) * handSize),
