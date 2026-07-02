@@ -426,7 +426,7 @@ function InviteScreen({ onBack, onPlayLocalInstead }) {
 }
 
 
-function Lobby({ onStart, ready, usedMock, mode, onBack }) {
+function Lobby({ onStart, ready, mode, onBack }) {
   const isBot = mode === "bot";
   const [names, setNames] = useState(isBot ? ["Player 1", "Rottington 🤖"] : ["Player 1", "Player 2"]);
   const [err, setErr] = useState("");
@@ -445,13 +445,6 @@ function Lobby({ onStart, ready, usedMock, mode, onBack }) {
         <h1 style={{ fontFamily: imp, fontSize: "min(72px,18vw)", lineHeight: 0.9, margin: 0 }}>
           <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
         </h1>
-        {usedMock && (
-          <div style={{ background: "rgba(255,184,0,0.1)", border: "1px solid rgba(255,184,0,0.35)", borderRadius: 8, padding: "8px 12px", marginTop: 10 }}>
-            <p style={{ color: "#FFB800", fontSize: 10, lineHeight: 1.5, margin: 0 }}>
-              ⚠ Couldn't reach the BRAINROT API from here (likely a CORS block in this sandbox). Playing with placeholder cards instead — real NFT art will show once this is hosted on a real domain.
-            </p>
-          </div>
-        )}
       </div>
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ color: C.acid, fontFamily: imp, fontSize: 13, letterSpacing: 1, margin: 0 }}>PLAYERS</p>
@@ -645,7 +638,7 @@ function GameEndModal({ players, round, totalRounds, onNext, onEnd }) {
 }
 
 // ── GAME ──────────────────────────────────────────────────────────────────
-function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedMock, onEnd }) {
+function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd }) {
   const [players, setPlayers] = useState(init);
   const [pile, setPile] = useState(initPile);
   const [round, setRound] = useState(1);
@@ -998,12 +991,6 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, usedM
         </div>
       )}
 
-      {usedMock && (
-        <div style={{ background: "rgba(255,184,0,0.1)", borderBottom: "1px solid rgba(255,184,0,0.3)", padding: "6px 14px", flexShrink: 0 }}>
-          <p style={{ color: "#FFB800", fontSize: 9, margin: 0, lineHeight: 1.5 }}>⚠ Mock cards — API unreachable from this sandbox.</p>
-        </div>
-      )}
-
       {/* Other hands */}
       <div style={{ padding: "10px 14px 6px", flexShrink: 0 }}>
         <p style={{ fontSize: 8, letterSpacing: 2, textTransform: "uppercase", color: C.muted, margin: "0 0 6px" }}>Other Hands</p>
@@ -1129,44 +1116,11 @@ function EndScreen({ players, onRestart }) {
   );
 }
 
-// ── MOCK DATA ─────────────────────────────────────────────────────────────
-const MOCK_BASES = [
-  "Tralalero Tralala", "Bombardiro Crocodilo", "Tung Tung Tung Sahur",
-  "Lirilì Larilà", "Boneca Ambalabu", "Brr Brr Patapim",
-  "Chimpanzini Bananini", "Bombombini Gusini", "Cappuccino Assassino",
-  "Trippi Troppi", "Frigo Camelo", "La Vaca Saturno Saturnita",
-  "Ballerina Cappuccina", "Glorbo Fruttodrillo", "Orangutini Ananasini",
-  "Blueberrinni Octopussini", "Girafa Celestre", "Bobrito Bandito",
-  "Frulli Frulla", "Cocofanto Elefanto", "Burbaloni Lulilolli",
-  "Il Cacto Hipopotamo", "Rhino Toasterino", "Bananita Dolfinita",
-];
-function makeMockToken(id, base) {
-  const palette = ["39FF14", "FF2D78", "00D4FF", "FFB800", "6B2FFF"];
-  const color = palette[Math.abs(base.charCodeAt(0) + id) % palette.length];
-  return {
-    id, name: `${base}ini #${id}`,
-    image_url: `https://placehold.co/300x300/1A0F2E/${color}?text=${encodeURIComponent(base)}&font=roboto`,
-    attributes: [
-      { trait_type: "Base", value: base },
-      { trait_type: "Rarity Tier", value: ["Common", "Rare", "Epic", "Legendary"][Math.floor(Math.random() * 4)] },
-      { trait_type: "Hat", value: ["None", "Crown", "Fedora", "Cap"][Math.floor(Math.random() * 4)] },
-      { trait_type: "Expression", value: ["Calm", "Angry", "Smug", "Cursed"][Math.floor(Math.random() * 4)] },
-    ]
-  };
-}
-function buildMockDeck() {
-  const tokens = [];
-  let id = 1000;
-  MOCK_BASES.forEach(base => { for (let i = 0; i < 5; i++) tokens.push(makeMockToken(id++, base)); });
-  return shuffle(tokens).slice(0, DECK_SIZE);
-}
-
 // ── ROOT ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [phase, setPhase] = useState("loading");
   const [status, setStatus] = useState("Connecting to the collection…");
   const [basePools, setBasePools] = useState([]);
-  const [usedMock, setUsedMock] = useState(false);
   const [mode, setMode] = useState(null); // "local" | "bot" | "invite"
   const [gamePlayers, setGamePlayers] = useState([]);
   const [gamePile, setGamePile] = useState([]);
@@ -1223,20 +1177,14 @@ export default function App() {
         }
 
         tokenCache.current = cached;
-        setUsedMock(false);
         setStatus(`Ready — ${cached.length} cards loaded.`);
         setPhase("mode-select");
       } catch (e) {
         console.warn(`Load attempt ${attempt} failed:`, e.message);
-        if (attempt < 4) {
-          setStatus(`Loading… (${attempt}/4)`);
-          await new Promise(r => setTimeout(r, 1200 * attempt));
-          return load(attempt + 1);
-        }
-        // After 4 attempts fall back to mock
-        tokenCache.current = buildMockDeck();
-        setUsedMock(true);
-        setPhase("mode-select");
+        const delay = Math.min(1200 * attempt, 8000);
+        setStatus(`Connecting… retrying in ${Math.round(delay/1000)}s`);
+        await new Promise(r => setTimeout(r, delay));
+        return load(attempt + 1); // retry forever — never fall back to mock
       }
     }
     load();
@@ -1246,14 +1194,10 @@ export default function App() {
     setPhase("loading"); setStatus("Shuffling the deck…");
     usedRotIds = new Set();
     try {
-      let tokens = [];
-      if (usedMock || tokenCache.current.length === 0) {
-        tokens = buildMockDeck();
-      } else {
-        // Use the prefetched cache — no API calls needed at deal time
-        tokens = shuffle([...tokenCache.current]);
-        if (tokens.length < playerNames.length * 2) throw new Error("Not enough cards loaded. Please refresh.");
+      if (tokenCache.current.length < playerNames.length * 2) {
+        throw new Error("Cards still loading — please wait a moment and try again.");
       }
+      const tokens = shuffle([...tokenCache.current]);
       const shuffled = shuffle(tokens);
       const handSize = Math.min(7, Math.floor(shuffled.length / playerNames.length));
       const players = playerNames.map((name, i) => ({ name, hand: shuffled.slice(i * handSize, (i + 1) * handSize), sets: [], score: 0 }));
@@ -1263,7 +1207,7 @@ export default function App() {
       setPhase("game");
     } catch (e) {
       setStatus(`Error: ${e.message}`);
-      setTimeout(() => setPhase("lobby"), 2500);
+      setTimeout(() => setPhase("lobby"), 3000);
     }
   }
 
@@ -1282,8 +1226,7 @@ export default function App() {
   if (phase === "lobby") return (
     <Lobby
       onStart={buildDeck}
-      ready={basePools.length > 0}
-      usedMock={usedMock}
+      ready={tokenCache.current.length > 0}
       mode={mode}
       onBack={() => setPhase("mode-select")}
     />
@@ -1294,7 +1237,6 @@ export default function App() {
       pile={gamePile}
       allTokens={gameAllTokens}
       isBotMode={mode === "bot"}
-      usedMock={usedMock}
       onEnd={ps => { setEndPlayers(ps); setPhase("end"); }}
     />
   );
