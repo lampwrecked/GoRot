@@ -170,7 +170,8 @@ function RotModal({ asker, target, base, rotToken, pileCount, onDraw, autoPlay }
   function handleTap() {
     if (drawn) return;
     setDrawn(true);
-    setTimeout(onDraw, 950); // let the reveal animation play before advancing
+    // For bot: auto-advance after animation. For human: wait for GOT IT button.
+    if (autoPlay) setTimeout(onDraw, 950);
   }
 
   // Bot auto-taps the pile after a short beat
@@ -225,20 +226,23 @@ function RotModal({ asker, target, base, rotToken, pileCount, onDraw, autoPlay }
             <p style={{ color: C.muted, fontSize: 11, margin: 0 }}>{asker} adds a card to its hand, face-down.</p>
           </>
         ) : (
-          // Human draw — show the real NFT they picked up.
+          // Human draw — show the real NFT they picked up with a GOT IT button
           <>
             <div style={{ display: "flex", justifyContent: "center", animation: "flipIn 0.5s ease both" }}>
               {rotToken
                 ? <NFTCard token={rotToken} size={140} />
-                : <div style={{ width: 140, height: 140, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 12 }}>Pile empty</div>
+                : <div style={{ width: 140, height: 60, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 12 }}>Pile empty</div>
               }
             </div>
             {rotBase && (
               <p style={{ color: C.acid, fontSize: 11, margin: 0, letterSpacing: 1, textTransform: "uppercase", fontFamily: imp }}>
-                {rotBase} #{rotToken.id}
+                {rotBase} #{rotToken.id} — added to your hand
               </p>
             )}
-            <p style={{ color: C.muted, fontSize: 11, margin: 0 }}>{asker} adds it to their hand…</p>
+            <button onClick={onDraw}
+              style={{ background: C.mag, border: "none", borderRadius: 8, color: "white", fontFamily: imp, fontSize: 18, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
+              GOT IT
+            </button>
           </>
         )}
       </div>
@@ -880,37 +884,46 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
   // Called when the player taps the draw pile during a Go Rot modal
   function performDraw() {
-    const currentPlayers = playersRef.current;
     const p2 = [...pileRef.current];
     const drawnCard = p2.length > 0 ? p2.pop() : null;
+    const curIdx = cur; // capture current index for closure
 
     if (drawnCard) {
-      addLog(`${currentPlayers[cur].name} drew: ${getBase(drawnCard)}`);
+      addLog(`${playersRef.current[curIdx].name} drew: ${getBase(drawnCard)}`);
+      setPile(p2);
     }
 
-    let ps = currentPlayers.map((p, i) =>
-      i === cur && drawnCard ? { ...p, hand: [...p.hand, drawnCard] } : p
-    );
-    const newSetsFound = [];
-    ps = applyCheck(ps, cur, newSetsFound);
+    // Use functional updater — always gets the absolute latest players state
+    // regardless of when this function was created or closures
+    setPlayers(latestPlayers => {
+      let ps = latestPlayers.map((p, i) =>
+        i === curIdx && drawnCard ? { ...p, hand: [...p.hand, drawnCard] } : p
+      );
+      const newSetsFound = [];
+      ps = applyCheck(ps, curIdx, newSetsFound);
 
-    setPlayers(ps);
-    setPile(p2);
-    setModal(null);
+      const setModals = newSetsFound.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot }));
 
-    const setModals = newSetsFound.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot }));
+      if (setModals.length > 0) {
+        // Schedule after this state update settles
+        setTimeout(() => {
+          modalQueue.current = setModals;
+          setModal(null);
+          showNext();
+        }, 0);
+      } else {
+        const next = (curIdx + 1) % ps.length;
+        setTimeout(() => {
+          setModal(null);
+          setCur(next);
+          setTargetIdx((next + 1) % ps.length);
+          setRevealed(isBotMode && next === BOT_IDX);
+          setSelBase(null);
+        }, 0);
+      }
 
-    // If pile runs out mid-game, just continue — game ends by turn count not pile
-    if (setModals.length > 0) {
-      modalQueue.current = setModals;
-      showNext();
-    } else {
-      const next = (cur + 1) % ps.length;
-      setCur(next);
-      setTargetIdx((next + 1) % ps.length);
-      setRevealed(isBotMode && next === BOT_IDX);
-      setSelBase(null);
-    }
+      return ps;
+    });
   }
 
   function dismissModal() {
