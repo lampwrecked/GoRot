@@ -105,63 +105,43 @@ function CardBack({ size = 28 }) {
 
 // ── LOADING ───────────────────────────────────────────────────────────────
 function Loader({ msg, progress = 0, previewCards = [] }) {
-  // Assign each card a stable random position/rotation on first render
-  const positions = useRef([]);
-  if (positions.current.length < previewCards.length) {
-    for (let i = positions.current.length; i < previewCards.length; i++) {
-      positions.current.push({
-        top: Math.random() * 90,
-        left: Math.random() * 88,
-        rot: (Math.random() - 0.5) * 28,
-        size: 70 + Math.random() * 50,
-        delay: Math.random() * 0.4,
-      });
-    }
-  }
-
   return (
     <div style={{ background: C.void, minHeight: "100vh", position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: 24, fontFamily: mono, overflow: "hidden" }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes sl{0%{transform:translateX(-200%)}100%{transform:translateX(500%)}}@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}@keyframes fadein{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}@keyframes cardpop{from{opacity:0;transform:translateY(14px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes cardfade{from{opacity:0;transform:scale(0.85)}to{opacity:1;transform:scale(1)}}`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes sl{0%{transform:translateX(-200%)}100%{transform:translateX(500%)}}@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}@keyframes fadein{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}@keyframes cardpop{from{opacity:0;transform:translateY(14px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes cardfade{from{opacity:0;transform:scale(0.9)}to{opacity:0.3;transform:scale(1)}}`}</style>
 
-      {/* Background card collage */}
-      {previewCards.slice(0, 40).map((token, i) => {
-        const p = positions.current[i];
-        if (!p) return null;
-        return (
+      {/* Background card grid */}
+      <div style={{
+        position: "absolute", inset: 0,
+        display: "grid",
+        gridTemplateColumns: "repeat(3, 1fr)",
+        gap: 6, padding: 6,
+        zIndex: 0, pointerEvents: "none",
+        alignContent: "start",
+      }}>
+        {previewCards.slice(0, 30).map((token, i) => (
           <div key={token.id} style={{
-            position: "absolute",
-            top: `${p.top}%`, left: `${p.left}%`,
-            width: p.size, height: p.size * 1.2,
-            transform: `rotate(${p.rot}deg)`,
-            opacity: 0.18,
-            borderRadius: 8,
-            overflow: "hidden",
+            borderRadius: 8, overflow: "hidden",
             background: C.corrupt,
             border: `1px solid ${C.border}`,
-            animation: `cardfade 0.6s ease ${p.delay}s both`,
-            pointerEvents: "none",
-            zIndex: 0,
+            opacity: 0,
+            animation: `cardfade 0.5s ease ${(i % 6) * 0.05}s forwards`,
           }}>
             {token.image_url && (
               <img src={fixImg(token.image_url)} alt=""
-                style={{ width: "100%", height: "85%", objectFit: "cover", display: "block" }} />
+                style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
             )}
-            <div style={{ padding: "2px 4px", fontSize: 8, color: C.acid, fontFamily: imp, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-              {getBase(token)}
-            </div>
           </div>
-        );
-      })}
+        ))}
+      </div>
 
-      {/* Foreground content */}
-      <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
-        {/* Dark backdrop so text is readable over the collage */}
-        <div style={{ position: "absolute", inset: "-40px -60px", background: "radial-gradient(ellipse at center, rgba(10,10,15,0.85) 50%, transparent 100%)", zIndex: -1, pointerEvents: "none" }} />
+      {/* Dark vignette so foreground text is readable */}
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, rgba(10,10,15,0.75) 30%, rgba(10,10,15,0.4) 100%)", zIndex: 1, pointerEvents: "none" }} />
 
+      {/* Foreground */}
+      <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
         <h1 style={{ fontFamily: imp, fontSize: 64, lineHeight: 1, margin: 0, textAlign: "center" }}>
           <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
         </h1>
-
         <div style={{ width: 260, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ width: "100%", height: 4, background: C.corrupt, borderRadius: 2, overflow: "hidden" }}>
             {progress > 0 ? (
@@ -177,12 +157,6 @@ function Loader({ msg, progress = 0, previewCards = [] }) {
             )}
           </div>
         </div>
-
-        {previewCards.length > 0 && (
-          <p style={{ color: C.muted, fontSize: 9, margin: 0, letterSpacing: 1 }}>
-            {previewCards.length} cards loaded so far…
-          </p>
-        )}
       </div>
     </div>
   );
