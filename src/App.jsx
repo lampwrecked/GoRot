@@ -438,7 +438,7 @@ function InviteScreen({ onBack, onPlayLocalInstead }) {
 }
 
 
-function Lobby({ onStart, ready, mode, onBack }) {
+function Lobby({ onStart, ready, progress, mode, onBack }) {
   const isBot = mode === "bot";
   const [names, setNames] = useState(isBot ? ["Player 1", "Rottington 🤖"] : ["Player 1", "Player 2"]);
   const [err, setErr] = useState("");
@@ -479,10 +479,26 @@ function Lobby({ onStart, ready, mode, onBack }) {
           </button>
         )}
         {err && <p style={{ color: C.mag, fontSize: 11, margin: 0, textAlign: "center" }}>{err}</p>}
-        <button onClick={start} disabled={!ready}
-          style={{ background: ready ? C.acid : C.muted, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 14, cursor: ready ? "pointer" : "default", opacity: ready ? 1 : 0.6 }}>
-          {ready ? "DEAL THE CARDS" : "LOADING…"}
-        </button>
+
+        {!ready ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ width: "100%", height: 6, background: C.corrupt, borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ width: `${progress}%`, height: "100%", background: C.acid, borderRadius: 3, transition: "width 0.4s ease" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <p style={{ color: C.muted, fontSize: 10, margin: 0 }}>Loading cards from the collection…</p>
+              <p style={{ color: C.acid, fontSize: 10, margin: 0, fontFamily: imp }}>{progress}%</p>
+            </div>
+            <button disabled style={{ background: C.corrupt, border: "none", borderRadius: 8, color: C.muted, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 14, cursor: "default", opacity: 0.5 }}>
+              DEAL THE CARDS
+            </button>
+          </div>
+        ) : (
+          <button onClick={start}
+            style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 14, cursor: "pointer" }}>
+            DEAL THE CARDS
+          </button>
+        )}
         <p style={{ color: C.muted, fontSize: 9, textAlign: "center", lineHeight: 1.7, margin: 0 }}>
           {isBot ? "Rottington plays automatically on its turn." : "Pass-and-play"} · 3+ same Base = set · Trait combos = bonus pts
         </p>
@@ -1247,7 +1263,8 @@ export default function App() {
   if (phase === "lobby") return (
     <Lobby
       onStart={buildDeck}
-      ready={tokenCache.current.length > 0}
+      ready={progress >= 100}
+      progress={progress}
       mode={mode}
       onBack={() => setPhase("mode-select")}
     />
