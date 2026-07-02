@@ -104,29 +104,85 @@ function CardBack({ size = 28 }) {
 }
 
 // ── LOADING ───────────────────────────────────────────────────────────────
-function Loader({ msg, progress = 0 }) {
-  return (
-    <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: 24, fontFamily: mono }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes sl{0%{transform:translateX(-200%)}100%{transform:translateX(500%)}}@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}@keyframes fadein{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}@keyframes cardpop{from{opacity:0;transform:translateY(14px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}`}</style>
-      <h1 style={{ fontFamily: imp, fontSize: 64, lineHeight: 1, margin: 0, textAlign: "center" }}>
-        <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
-      </h1>
+function Loader({ msg, progress = 0, previewCards = [] }) {
+  // Assign each card a stable random position/rotation on first render
+  const positions = useRef([]);
+  if (positions.current.length < previewCards.length) {
+    for (let i = positions.current.length; i < previewCards.length; i++) {
+      positions.current.push({
+        top: Math.random() * 90,
+        left: Math.random() * 88,
+        rot: (Math.random() - 0.5) * 28,
+        size: 70 + Math.random() * 50,
+        delay: Math.random() * 0.4,
+      });
+    }
+  }
 
-      {/* Progress bar */}
-      <div style={{ width: 260, display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ width: "100%", height: 4, background: C.corrupt, borderRadius: 2, overflow: "hidden" }}>
-          {progress > 0 ? (
-            <div style={{ width: `${progress}%`, height: "100%", background: C.acid, borderRadius: 2, transition: "width 0.4s ease" }} />
-          ) : (
-            <div style={{ width: "40%", height: "100%", background: C.acid, borderRadius: 2, animation: "sl 1.3s ease-in-out infinite" }} />
-          )}
+  return (
+    <div style={{ background: C.void, minHeight: "100vh", position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: 24, fontFamily: mono, overflow: "hidden" }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes sl{0%{transform:translateX(-200%)}100%{transform:translateX(500%)}}@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}@keyframes fadein{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}@keyframes cardpop{from{opacity:0;transform:translateY(14px) scale(0.9)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes cardfade{from{opacity:0;transform:scale(0.85)}to{opacity:1;transform:scale(1)}}`}</style>
+
+      {/* Background card collage */}
+      {previewCards.slice(0, 40).map((token, i) => {
+        const p = positions.current[i];
+        if (!p) return null;
+        return (
+          <div key={token.id} style={{
+            position: "absolute",
+            top: `${p.top}%`, left: `${p.left}%`,
+            width: p.size, height: p.size * 1.2,
+            transform: `rotate(${p.rot}deg)`,
+            opacity: 0.18,
+            borderRadius: 8,
+            overflow: "hidden",
+            background: C.corrupt,
+            border: `1px solid ${C.border}`,
+            animation: `cardfade 0.6s ease ${p.delay}s both`,
+            pointerEvents: "none",
+            zIndex: 0,
+          }}>
+            {token.image_url && (
+              <img src={fixImg(token.image_url)} alt=""
+                style={{ width: "100%", height: "85%", objectFit: "cover", display: "block" }} />
+            )}
+            <div style={{ padding: "2px 4px", fontSize: 8, color: C.acid, fontFamily: imp, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+              {getBase(token)}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Foreground content */}
+      <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
+        {/* Dark backdrop so text is readable over the collage */}
+        <div style={{ position: "absolute", inset: "-40px -60px", background: "radial-gradient(ellipse at center, rgba(10,10,15,0.85) 50%, transparent 100%)", zIndex: -1, pointerEvents: "none" }} />
+
+        <h1 style={{ fontFamily: imp, fontSize: 64, lineHeight: 1, margin: 0, textAlign: "center" }}>
+          <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
+        </h1>
+
+        <div style={{ width: 260, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ width: "100%", height: 4, background: C.corrupt, borderRadius: 2, overflow: "hidden" }}>
+            {progress > 0 ? (
+              <div style={{ width: `${progress}%`, height: "100%", background: C.acid, borderRadius: 2, transition: "width 0.4s ease" }} />
+            ) : (
+              <div style={{ width: "40%", height: "100%", background: C.acid, borderRadius: 2, animation: "sl 1.3s ease-in-out infinite" }} />
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <p style={{ color: C.muted, fontSize: 10, margin: 0, lineHeight: 1.6, flex: 1 }}>{msg}</p>
+            {progress > 0 && (
+              <p style={{ color: C.acid, fontSize: 10, margin: 0, fontFamily: imp }}>{progress}%</p>
+            )}
+          </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <p style={{ color: C.muted, fontSize: 10, margin: 0, lineHeight: 1.6, flex: 1 }}>{msg}</p>
-          {progress > 0 && (
-            <p style={{ color: C.acid, fontSize: 10, margin: 0, fontFamily: imp }}>{progress}%</p>
-          )}
-        </div>
+
+        {previewCards.length > 0 && (
+          <p style={{ color: C.muted, fontSize: 9, margin: 0, letterSpacing: 1 }}>
+            {previewCards.length} cards loaded so far…
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1155,7 +1211,8 @@ export default function App() {
   const [phase, setPhase] = useState("loading");
   const [status, setStatus] = useState("Connecting…");
   const [progress, setProgress] = useState(0);
-  const [loadKey, setLoadKey] = useState(0); // increment to re-trigger load
+  const [loadKey, setLoadKey] = useState(0);
+  const [previewCards, setPreviewCards] = useState([]); // increment to re-trigger load
   const [mode, setMode] = useState(null);
   const [gamePlayers, setGamePlayers] = useState([]);
   const [gamePile, setGamePile] = useState([]);
@@ -1167,6 +1224,7 @@ export default function App() {
   // TOKEN_STORE (module-level) is the single source of truth.
   useEffect(() => {
     let cancelled = false;
+    setPreviewCards([]);
 
     async function fetchWithRetry(path, tries = 4) {
       for (let i = 0; i < tries; i++) {
@@ -1233,14 +1291,16 @@ export default function App() {
         if (cancelled) return;
         try {
           const d = await fetchWithRetry(`/tokens/${uniqueIds[i]}/metadata`, 2);
-          if (d?.data) cards.push(d.data);
+          if (d?.data) {
+            cards.push(d.data);
+            // Stream every 3rd card to the background collage
+            if (cards.length % 3 === 0) setPreviewCards(c => [...c, d.data]);
+          }
         } catch { /* skip */ }
-        // Update progress every 5 cards
         if (i % 5 === 0) {
           setProgress(30 + Math.round((i / uniqueIds.length) * 65));
           setStatus(`Loading cards… ${i + 1}/${uniqueIds.length}`);
         }
-        // Small delay every 10 cards to avoid rate limiting
         if (i > 0 && i % 10 === 0) await new Promise(r => setTimeout(r, 200));
       }
 
@@ -1292,7 +1352,7 @@ export default function App() {
   }
 
   // ── RENDER ──────────────────────────────────────────────────────────────
-  if (phase === "loading") return <Loader msg={status} progress={progress} />;
+  if (phase === "loading") return <Loader msg={status} progress={progress} previewCards={previewCards} />;
   if (phase === "mode-select") return (
     <ModeSelect onPick={m => { setMode(m); setPhase(m === "invite" ? "invite" : "lobby"); }} />
   );
