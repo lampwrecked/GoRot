@@ -11,13 +11,6 @@ const TOTAL_ROUNDS = 10;
 let TOKEN_STORE = [];
 let usedRotIds = new Set();
 
-async function cpi(path) {
-  const r = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Authorization": `Bearer ${API_KEY}`, "Accept": "application/json" }
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
 
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
 function getAttr(t, type) { return t?.attributes?.find(a => a.trait_type === type)?.value || null; }
@@ -1160,129 +1153,140 @@ function EndScreen({ players, onRestart }) {
 // ── ROOT ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [phase, setPhase] = useState("loading");
-  const [status, setStatus] = useState("Connecting to the collection…");
+  const [status, setStatus] = useState("Connecting…");
   const [progress, setProgress] = useState(0);
-  const [basePools, setBasePools] = useState([]);
   const [mode, setMode] = useState(null);
   const [gamePlayers, setGamePlayers] = useState([]);
   const [gamePile, setGamePile] = useState([]);
   const [gameAllTokens, setGameAllTokens] = useState([]);
   const [endPlayers, setEndPlayers] = useState([]);
 
+  // ── LOAD ────────────────────────────────────────────────────────────────
+  // Single async load on mount. Retries forever until we have real cards.
+  // TOKEN_STORE (module-level) is the single source of truth.
   useEffect(() => {
-    async function load(attempt = 1) {
-      try {
-        setProgress(2);
-        setStatus(attempt > 1 ? `Retrying… (${attempt})` : "Fetching card catalog…");
-        const td = await cpi("/traits?type=Base");
-        const bases = td?.data?.[0]?.values || [];
-        if (!bases.length) throw new Error("No bases found");
-        const playable = bases.filter(b => b.count >= 4);
-        setProgress(10);
-        setStatus(`${playable.length} Base types found…`);
+    let cancelled = false;
 
-        // Fetch token ID pools per base (counts as 10→30% of progress)
-        const pools = [];
-        const take = Math.min(playable.length, 18);
-        for (let i = 0; i < take; i++) {
-          const b = playable[i];
-          try {
-            const d = await cpi(`/traits/tokens?type=Base&value=${encodeURIComponent(b.value)}&limit=100`);
-            const ids = d?.data?.token_ids || [];
-            if (ids.length >= 3) pools.push({ base: b.value, tokenIds: ids });
-          } catch { /* skip */ }
-          setProgress(10 + Math.round(((i + 1) / take) * 20));
-          if ((i + 1) % 3 === 0) setStatus(`Loading pools… ${i + 1}/${take}`);
+    async function fetchWithRetry(path, tries = 4) {
+      for (let i = 0; i < tries; i++) {
+        try {
+          const r = await fetch(`${BASE_URL}${path}`, {
+            headers: { Authorization: `Bearer ${API_KEY}`, Accept: "application/json" }
+          });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return await r.json();
+        } catch (e) {
+          if (i < tries - 1) await new Promise(r => setTimeout(r, 600 * (i + 1)));
+          else throw e;
         }
-        if (!pools.length) throw new Error("No pools found");
-        setBasePools(pools);
-        setProgress(30);
-
-        // Prefetch card metadata (30→100% of progress)
-        const perBase = 8;
-        const maxBases = Math.min(pools.length, 20);
-        const allIds = [];
-        shuffle(pools).slice(0, maxBases).forEach(b =>
-          allIds.push(...shuffle(b.tokenIds).slice(0, perBase))
-        );
-        const uniqueIds = [...new Set(allIds)];
-
-        const cached = [];
-        const CHUNK = 20;
-        for (let i = 0; i < uniqueIds.length; i += CHUNK) {
-          const chunk = uniqueIds.slice(i, i + CHUNK);
-          const results = await Promise.all(
-            chunk.map(id => cpi(`/tokens/${id}/metadata`).then(d => d?.data || null).catch(() => null))
-          );
-          results.forEach(m => { if (m) cached.push(m); });
-          const pct = 30 + Math.round(((i + CHUNK) / uniqueIds.length) * 70);
-          setProgress(Math.min(pct, 99));
-          setStatus(`Loading cards… ${Math.min(i + CHUNK, uniqueIds.length)}/${uniqueIds.length}`);
-        }
-
-        TOKEN_STORE = cached;
-        setProgress(100);
-        setStatus(`${cached.length} cards ready.`);
-        await new Promise(r => setTimeout(r, 100));
-        setPhase("mode-select");
-      } catch (e) {
-        console.warn(`Load attempt ${attempt} failed:`, e.message);
-        const delay = Math.min(1200 * attempt, 8000);
-        setStatus(`Connecting… retrying in ${Math.round(delay / 1000)}s`);
-        setProgress(0);
-        await new Promise(r => setTimeout(r, delay));
-        return load(attempt + 1); // retry forever — never fall back to mock
       }
     }
-    load();
+
+    async function loadCards() {
+      // Step 1: get Base trait catalog
+      if (cancelled) return;
+      setStatus("Fetching card catalog…"); setProgress(5);
+      let bases;
+      try {
+        const td = await fetchWithRetry("/traits?type=Base");
+        bases = (td?.data?.[0]?.values || []).filter(b => b.count >= 4);
+        if (!bases.length) throw new Error("No base types found");
+      } catch (e) {
+        if (!cancelled) { setStatus(`Failed: ${e.message}. Retrying…`); setProgress(0); await new Promise(r => setTimeout(r, 3000)); return loadCards(); }
+        return;
+      }
+
+      // Step 2: get token ID pools for up to 20 base types
+      if (cancelled) return;
+      setStatus(`Found ${bases.length} creature types. Loading pools…`); setProgress(10);
+      const pools = [];
+      const take = Math.min(bases.length, 20);
+      for (let i = 0; i < take; i++) {
+        if (cancelled) return;
+        try {
+          const d = await fetchWithRetry(`/traits/tokens?type=Base&value=${encodeURIComponent(bases[i].value)}&limit=100`);
+          const ids = d?.data?.token_ids || [];
+          if (ids.length >= 3) pools.push({ base: bases[i].value, ids });
+        } catch { /* skip this base */ }
+        setProgress(10 + Math.round(((i + 1) / take) * 20));
+      }
+      if (!pools.length) {
+        if (!cancelled) { setStatus("Could not load any card pools. Retrying…"); setProgress(0); await new Promise(r => setTimeout(r, 3000)); return loadCards(); }
+        return;
+      }
+
+      // Step 3: fetch metadata for 6 tokens per base type (sequential, not parallel — avoids rate limits)
+      if (cancelled) return;
+      const perBase = 6;
+      const toFetch = [];
+      shuffle(pools).forEach(p => toFetch.push(...shuffle(p.ids).slice(0, perBase)));
+      const uniqueIds = [...new Set(toFetch)];
+      setStatus(`Loading ${uniqueIds.length} cards…`); setProgress(30);
+
+      const cards = [];
+      for (let i = 0; i < uniqueIds.length; i++) {
+        if (cancelled) return;
+        try {
+          const d = await fetchWithRetry(`/tokens/${uniqueIds[i]}/metadata`, 2);
+          if (d?.data) cards.push(d.data);
+        } catch { /* skip */ }
+        // Update progress every 5 cards
+        if (i % 5 === 0) {
+          setProgress(30 + Math.round((i / uniqueIds.length) * 65));
+          setStatus(`Loading cards… ${i + 1}/${uniqueIds.length}`);
+        }
+        // Small delay every 10 cards to avoid rate limiting
+        if (i > 0 && i % 10 === 0) await new Promise(r => setTimeout(r, 200));
+      }
+
+      if (cards.length < 20) {
+        if (!cancelled) { setStatus(`Only ${cards.length} cards loaded — retrying…`); setProgress(0); await new Promise(r => setTimeout(r, 3000)); return loadCards(); }
+        return;
+      }
+
+      if (cancelled) return;
+      TOKEN_STORE = cards;
+      setProgress(100);
+      setStatus(`${cards.length} cards loaded. Ready!`);
+      await new Promise(r => setTimeout(r, 400));
+      if (!cancelled) setPhase("mode-select");
+    }
+
+    loadCards();
+    return () => { cancelled = true; };
   }, []);
 
+  // ── BUILD DECK ──────────────────────────────────────────────────────────
   function buildDeck(playerNames) {
-    if (TOKEN_STORE.length < 2) return;
+    if (TOKEN_STORE.length < 20) return; // should never happen — gated by loading
     usedRotIds = new Set();
     const tokens = shuffle([...TOKEN_STORE]);
-    const shuffled = shuffle(tokens);
-    const handSize = Math.min(7, Math.floor(shuffled.length / playerNames.length));
+    const handSize = Math.min(7, Math.floor(tokens.length / playerNames.length));
     const players = playerNames.map((name, i) => ({
       name,
-      hand: shuffled.slice(i * handSize, (i + 1) * handSize),
+      hand: tokens.slice(i * handSize, (i + 1) * handSize),
       sets: [], score: 0
     }));
     setGamePlayers(players);
-    setGamePile(shuffled.slice(playerNames.length * handSize));
-    setGameAllTokens(tokens);
+    setGamePile(tokens.slice(playerNames.length * handSize));
+    setGameAllTokens([...TOKEN_STORE]);
     setPhase("game");
   }
 
+  // ── RENDER ──────────────────────────────────────────────────────────────
   if (phase === "loading") return <Loader msg={status} progress={progress} />;
-  if (phase === "mode-select") return <ModeSelect onPick={(m) => {
-    setMode(m);
-    if (m === "invite") setPhase("invite");
-    else setPhase("lobby");
-  }} />;
+  if (phase === "mode-select") return (
+    <ModeSelect onPick={m => { setMode(m); setPhase(m === "invite" ? "invite" : "lobby"); }} />
+  );
   if (phase === "invite") return (
-    <InviteScreen
-      onBack={() => setPhase("mode-select")}
-      onPlayLocalInstead={() => { setMode("local"); setPhase("lobby"); }}
-    />
+    <InviteScreen onBack={() => setPhase("mode-select")} onPlayLocalInstead={() => { setMode("local"); setPhase("lobby"); }} />
   );
   if (phase === "lobby") return (
-    <Lobby
-      onStart={buildDeck}
-      ready={progress >= 100}
-      progress={progress}
-      mode={mode}
-      onBack={() => setPhase("mode-select")}
-    />
+    <Lobby onStart={buildDeck} ready={true} progress={100} mode={mode} onBack={() => setPhase("mode-select")} />
   );
   if (phase === "game") return (
-    <GameScreen
-      players={gamePlayers}
-      pile={gamePile}
-      allTokens={gameAllTokens}
-      isBotMode={mode === "bot"}
-      onEnd={ps => { setEndPlayers(ps); setPhase("end"); }}
-    />
+    <GameScreen players={gamePlayers} pile={gamePile} allTokens={gameAllTokens} isBotMode={mode === "bot"}
+      onEnd={ps => { setEndPlayers(ps); setPhase("end"); }} />
   );
   if (phase === "end") return <EndScreen players={endPlayers} onRestart={() => setPhase("mode-select")} />;
   return null;
