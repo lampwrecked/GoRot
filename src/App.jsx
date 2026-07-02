@@ -978,13 +978,26 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
   useEffect(() => {
     if (!isBotTurn || modal || botThinking) return;
     const bot = players[BOT_IDX];
-    if (!bot || bot.hand.length === 0) return; // nothing to ask with yet
+    if (!bot) return;
+
+    // If Rottington's hand is empty, auto-draw from pile before asking
+    if (bot.hand.length === 0) {
+      const p2 = [...pileRef.current];
+      if (p2.length === 0) {
+        // Pile empty and Rottington has no cards — game ends (handled by useEffect above)
+        return;
+      }
+      const drawn = p2.pop();
+      setPile(p2);
+      setPlayers(lp => lp.map((p, i) => i === BOT_IDX ? { ...p, hand: [...p.hand, drawn] } : p));
+      addLog(`Rottington 🤖 drew: ${getBase(drawn)} (empty hand)`);
+      return; // re-triggers effect on next render with new hand
+    }
 
     setBotThinking(true);
     const t = setTimeout(() => {
       const botBases = [...new Set(bot.hand.map(t => getBase(t)))];
       const chosenBase = botBases[Math.floor(Math.random() * botBases.length)];
-      // pick a random human target (anyone but itself)
       const candidates = players.map((_, i) => i).filter(i => i !== BOT_IDX);
       const chosenTarget = candidates[Math.floor(Math.random() * candidates.length)];
       ask(chosenBase, chosenTarget);
@@ -997,6 +1010,24 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
   const me = players[cur];
   const basesInHand = [...new Set(me.hand.map(t => getBase(t)))].sort();
+
+  // End game when pile is empty and any player has no cards
+  useEffect(() => {
+    if (modal || isBotTurn) return;
+    if (pileRef.current.length === 0 && players.some(p => p.hand.length === 0)) {
+      addLog("Pile empty and a hand is empty — game over.");
+      let finalPs = players;
+      const finalSets = [];
+      finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
+      setPlayers(finalPs);
+      const endModals = [
+        ...finalSets.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot })),
+        { type: "gameend", players: finalPs }
+      ];
+      modalQueue.current = endModals;
+      showNext();
+    }
+  }, [cur, players, modal]);
 
   if (!revealed && !(isBotMode && cur === BOT_IDX)) {
     return <PassScreen player={me} onReady={() => setRevealed(true)} />;
@@ -1101,7 +1132,20 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
                   </button>
                 );
               })}
-              {basesInHand.length === 0 && <p style={{ color: C.muted, fontSize: 11, gridColumn: "1/-1", margin: 0 }}>No cards in hand.</p>}
+              {basesInHand.length === 0 && pile.length > 0 && (
+                <button onClick={() => {
+                  // Auto-draw when hand is empty
+                  const p2 = [...pileRef.current];
+                  const drawn = p2.pop();
+                  if (drawn) { setPile(p2); setPlayers(lp => lp.map((p, i) => i === cur ? { ...p, hand: [...p.hand, drawn] } : p)); addLog(`${me.name} drew: ${getBase(drawn)} (empty hand)`); }
+                }}
+                  style={{ gridColumn: "1/-1", background: C.mag, border: "none", borderRadius: 6, color: "white", fontFamily: imp, fontSize: 13, padding: "10px", cursor: "pointer" }}>
+                  DRAW A CARD (hand empty)
+                </button>
+              )}
+              {basesInHand.length === 0 && pile.length === 0 && (
+                <p style={{ color: C.muted, fontSize: 11, gridColumn: "1/-1", margin: 0 }}>No cards — pile empty too. Turn passes.</p>
+              )}
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <select value={targetIdx} onChange={e => setTargetIdx(Number(e.target.value))}
@@ -1343,8 +1387,8 @@ export default function App() {
     const cards = [];
     for (let i = 0; i < chosen.length; i++) {
       const pool = chosen[i];
-      // Fetch 4 random tokens from this base type
-      const ids = shuffle([...pool.ids]).slice(0, 4);
+      // Fetch 6 random tokens per base type (enough for sets + pile buffer)
+      const ids = shuffle([...pool.ids]).slice(0, 6);
       for (const id of ids) {
         try {
           const d = await fetchWithRetry(`/tokens/${id}/metadata`, 2);
