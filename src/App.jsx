@@ -731,8 +731,14 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
   const [modal, setModal] = useState(null);
   const modalQueue = useRef([]);
+  const playersRef = useRef(init);
+  const pileRef = useRef(initPile);
 
   const addLog = h => setLog(l => [h, ...l.slice(0, 20)]);
+
+  // Keep refs in sync with state
+  useEffect(() => { playersRef.current = players; }, [players]);
+  useEffect(() => { pileRef.current = pile; }, [pile]);
 
   function startNewRound(currentPlayers, nextRound) {
     // Redeal from the full token pool, preserving cumulative scores
@@ -780,7 +786,9 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
     const useBase = overrideBase ?? selBase;
     const useTarget = overrideTarget ?? targetIdx;
     if (!useBase) { setAskErr("Pick a Base first."); return; }
-    const me = players[cur]; const them = players[useTarget];
+    const currentPlayers = playersRef.current;
+    const currentPile = pileRef.current;
+    const me = currentPlayers[cur]; const them = currentPlayers[useTarget];
     if (!me.hand.some(t => getBase(t) === useBase)) { setAskErr(`You have no ${useBase}.`); return; }
     setAskErr("");
 
@@ -799,7 +807,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
       }
 
       // Human-asks-human or human-asks-bot: transfer immediately
-      let ps = players.map((p, i) => {
+      let ps = currentPlayers.map((p, i) => {
         if (i === useTarget) return { ...p, hand: p.hand.filter(t => !matching.find(m => m.id === t.id)) };
         if (i === cur) return { ...p, hand: [...p.hand, ...matching] };
         return p;
@@ -807,59 +815,44 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
       ps = applyCheck(ps, cur, newSetsFound);
       addLog(`${me.name} got ${matching.length}× ${useBase} from ${them.name}`);
 
-      const matchScore = matching.length;
       pendingModals.push({
         type: "match",
         asker: me.name, target: them.name, base: useBase,
-        cards: matchedSnapshot, score: matchScore, bonusDesc: [],
+        cards: matchedSnapshot, score: matching.length, bonusDesc: [],
       });
 
-      newSetsFound.forEach(({ player, set }) => {
-        addLog(`${player} SET: ${set.tokens.length}× ${set.base} = ${set.score}pts`);
+      newSetsFound.forEach(({ player, set, isBot }) => {
         pendingModals.push({ type: "set", player, set, isBot });
       });
 
       setPlayers(ps); setSelBase(null);
 
-      // Only end if pile was already empty before this turn started —
-      // a match doesn't consume the pile, so check pile (not p2).
-      // The real end trigger is performDraw when p2 becomes empty.
-      // We check here only for the edge case where pile hit 0 from a
-      // previous draw and a match happens on the following go-again turn.
-      if (pile.length === 0) {
-        // Score all remaining hands before ending
+      if (currentPile.length === 0) {
         let finalPs = ps;
         const finalSets = [];
         finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
         setPlayers(finalPs);
-        finalSets.forEach(({ player, set }) => {
-          addLog(`${player} SET: ${set.tokens.length}× ${set.base} = ${set.score}pts`);
-          pendingModals.push({ type: "set", player, set, isBot });
-        });
+        finalSets.forEach(({ player, set, isBot }) => pendingModals.push({ type: "set", player, set, isBot }));
         pendingModals.push({ type: "gameend", players: finalPs });
       }
 
       modalQueue.current = pendingModals;
       showNext();
     } else {
-      // Don't draw yet — show the Go Rot modal with a tap-the-pile prompt.
-      // The actual draw happens when the player physically taps the pile.
       addLog(`${me.name} asked for ${useBase} — GO ROT!`);
-      setPlayers(players); setSelBase(null);
+      setSelBase(null);
 
-      // Only compute a reveal card for human turns — the bot's draw stays
-      // hidden, so there's no need to consume a slot from the unused pool.
       let rotToken = null;
       if (!(isBotMode && cur === BOT_IDX)) {
         const inPlayIds = new Set([
-          ...players.flatMap(p => p.hand.map(t => t.id)),
-          ...pile.map(t => t.id),
+          ...currentPlayers.flatMap(p => p.hand.map(t => t.id)),
+          ...currentPile.map(t => t.id),
         ]);
         rotToken = pickRotToken(allTokens, inPlayIds);
       }
 
       const rotModal = { type: "rot", asker: me.name, target: them.name, base: useBase, rotToken, needsDraw: true };
-      modalQueue.current = pendingModals; // any sets from a prior match this turn (rare on a miss) still queue after
+      modalQueue.current = pendingModals;
       setModal(rotModal);
     }
   }
@@ -867,40 +860,41 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
   // Called when human taps "HAND OVER" after Rottington asks them
   function confirmHandOver() {
     const { base, cards, useTarget } = modal;
-    const me = players[cur]; // Rottington
+    const currentPlayers = playersRef.current;
+    const currentPile = pileRef.current;
+    const me = currentPlayers[cur];
     setModal(null);
 
     const matching = cards;
     const pendingModals = [];
     const newSetsFound = [];
 
-    let ps = players.map((p, i) => {
+    let ps = currentPlayers.map((p, i) => {
       if (i === useTarget) return { ...p, hand: p.hand.filter(t => !matching.find(m => m.id === t.id)) };
       if (i === cur) return { ...p, hand: [...p.hand, ...matching] };
       return p;
     });
     ps = applyCheck(ps, cur, newSetsFound);
-    addLog(`${me.name} got ${matching.length}× ${base} from ${players[useTarget].name}`);
+    addLog(`${me.name} got ${matching.length}× ${base} from ${currentPlayers[useTarget].name}`);
 
     pendingModals.push({
       type: "match",
-      asker: me.name, target: players[useTarget].name, base,
+      asker: me.name, target: currentPlayers[useTarget].name, base,
       cards: matching, score: matching.length, bonusDesc: [],
     });
 
-    newSetsFound.forEach(({ player, set }) => {
-      addLog(`${player} SET: ${set.tokens.length}× ${set.base} = ${set.score}pts`);
+    newSetsFound.forEach(({ player, set, isBot }) => {
       pendingModals.push({ type: "set", player, set, isBot });
     });
 
     setPlayers(ps); setSelBase(null);
 
-    if (pile.length === 0) {
+    if (currentPile.length === 0) {
       let finalPs = ps;
       const finalSets = [];
       finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
       setPlayers(finalPs);
-      finalSets.forEach(({ player, set }) => pendingModals.push({ type: "set", player, set, isBot }));
+      finalSets.forEach(({ player, set, isBot }) => pendingModals.push({ type: "set", player, set, isBot }));
       pendingModals.push({ type: "gameend", players: finalPs });
     }
 
@@ -910,55 +904,50 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
   // Called when the player taps the draw pile during a Go Rot modal
   function performDraw() {
-    let drawnCard = null;
-    let p2 = [...pile];
+    const currentPlayers = playersRef.current;
+    const p2 = [...pileRef.current];
+    const drawnCard = p2.length > 0 ? p2.pop() : null;
 
-    if (p2.length > 0) {
-      drawnCard = p2.pop();
-      setPile(p2);
-      addLog(`${players[cur].name} drew: ${getBase(drawnCard)}`);
-    } else {
-      addLog(`${players[cur].name} — pile was already empty.`);
+    if (drawnCard) {
+      addLog(`${currentPlayers[cur].name} drew: ${getBase(drawnCard)}`);
     }
 
-    // Use functional update to ensure we work off the latest state
-    setPlayers(latestPlayers => {
-      let ps = drawnCard
-        ? latestPlayers.map((p, i) => i === cur ? { ...p, hand: [...p.hand, drawnCard] } : p)
-        : [...latestPlayers];
+    let ps = currentPlayers.map((p, i) =>
+      i === cur && drawnCard ? { ...p, hand: [...p.hand, drawnCard] } : p
+    );
+    const newSetsFound = [];
+    ps = applyCheck(ps, cur, newSetsFound);
 
-      const newSetsFound = [];
-      ps = applyCheck(ps, cur, newSetsFound);
+    setPlayers(ps);
+    setPile(p2);
+    setModal(null);
 
-      const setModals = newSetsFound.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot }));
+    const setModals = newSetsFound.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot }));
 
-      setModal(null);
+    if (p2.length === 0) {
+      let finalPs = ps;
+      const finalSets = [];
+      finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
+      setPlayers(finalPs);
+      const endModals = [
+        ...finalSets.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot })),
+        { type: "gameend", players: finalPs }
+      ];
+      modalQueue.current = endModals;
+      showNext();
+      return;
+    }
 
-      if (p2.length === 0) {
-        let finalPs = ps;
-        const finalSets = [];
-        finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
-        const endModals = finalSets.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot }));
-        endModals.push({ type: "gameend", players: finalPs });
-        modalQueue.current = endModals;
-        setTimeout(showNext, 0);
-        return finalPs;
-      }
-
-      if (setModals.length > 0) {
-        modalQueue.current = setModals;
-        setTimeout(showNext, 0);
-      } else {
-        const next = (cur + 1) % ps.length;
-        setTimeout(() => {
-          setCur(next); setTargetIdx((next + 1) % ps.length);
-          setRevealed(isBotMode && next === BOT_IDX);
-          setSelBase(null);
-        }, 0);
-      }
-
-      return ps;
-    });
+    if (setModals.length > 0) {
+      modalQueue.current = setModals;
+      showNext();
+    } else {
+      const next = (cur + 1) % ps.length;
+      setCur(next);
+      setTargetIdx((next + 1) % ps.length);
+      setRevealed(isBotMode && next === BOT_IDX);
+      setSelBase(null);
+    }
   }
 
   function dismissModal() {
