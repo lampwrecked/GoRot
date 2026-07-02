@@ -1150,7 +1150,8 @@ function EndScreen({ players, onRestart }) {
 export default function App() {
   const [phase, setPhase] = useState("loading");
   const [status, setStatus] = useState("Connecting to the collection…");
-  const [progress, setProgress] = useState(0); // 0-100
+  const [progress, setProgress] = useState(0);
+  const [cardsReady, setCardsReady] = useState(false);
   const [basePools, setBasePools] = useState([]);
   const [mode, setMode] = useState(null); // "local" | "bot" | "invite"
   const [gamePlayers, setGamePlayers] = useState([]);
@@ -1213,7 +1214,10 @@ export default function App() {
 
         tokenCache.current = cached;
         setProgress(100);
+        setCardsReady(true);
         setStatus(`${cached.length} cards ready.`);
+        // Small delay so React flushes the cache state before transitioning
+        await new Promise(r => setTimeout(r, 100));
         setPhase("mode-select");
       } catch (e) {
         console.warn(`Load attempt ${attempt} failed:`, e.message);
@@ -1228,12 +1232,13 @@ export default function App() {
   }, []);
 
   async function buildDeck(playerNames) {
+    if (!cardsReady || tokenCache.current.length < playerNames.length * 2) {
+      setStatus("Cards still loading — please wait.");
+      return;
+    }
     setPhase("loading"); setStatus("Shuffling the deck…");
     usedRotIds = new Set();
     try {
-      if (tokenCache.current.length < playerNames.length * 2) {
-        throw new Error("Cards still loading — please wait a moment and try again.");
-      }
       const tokens = shuffle([...tokenCache.current]);
       const shuffled = shuffle(tokens);
       const handSize = Math.min(7, Math.floor(shuffled.length / playerNames.length));
@@ -1263,7 +1268,7 @@ export default function App() {
   if (phase === "lobby") return (
     <Lobby
       onStart={buildDeck}
-      ready={progress >= 100}
+      ready={cardsReady}
       progress={progress}
       mode={mode}
       onBack={() => setPhase("mode-select")}
