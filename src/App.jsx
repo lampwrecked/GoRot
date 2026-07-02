@@ -7,6 +7,10 @@ const DECK_SIZE = 56;
 const SET_THRESHOLD = 3;
 const TOTAL_ROUNDS = 10;
 
+// Module-level store — completely outside React, no closure issues ever
+let TOKEN_STORE = [];
+let usedRotIds = new Set();
+
 async function cpi(path) {
   const r = await fetch(`${BASE_URL}${path}`, {
     headers: { "Authorization": `Bearer ${API_KEY}`, "Accept": "application/json" }
@@ -51,7 +55,6 @@ const mono = "'Courier New',monospace";
 // Picks a random card from the full collection pool that isn't currently
 // in anyone's hand or the draw pile — i.e. a "rotting" unused card to show
 // on the GO ROT! popup. Cycles through without repeats until exhausted.
-let usedRotIds = new Set();
 function pickRotToken(allTokens, inPlayIds) {
   const unused = allTokens.filter(t => !inPlayIds.has(t.id));
   const pool = unused.length > 0 ? unused : allTokens; // fallback if everything is in play
@@ -1157,16 +1160,12 @@ export default function App() {
   const [phase, setPhase] = useState("loading");
   const [status, setStatus] = useState("Connecting to the collection…");
   const [progress, setProgress] = useState(0);
-  const [cardsReady, setCardsReady] = useState(false);
   const [basePools, setBasePools] = useState([]);
-  const [mode, setMode] = useState(null); // "local" | "bot" | "invite"
+  const [mode, setMode] = useState(null);
   const [gamePlayers, setGamePlayers] = useState([]);
   const [gamePile, setGamePile] = useState([]);
   const [gameAllTokens, setGameAllTokens] = useState([]);
   const [endPlayers, setEndPlayers] = useState([]);
-
-  const tokenCacheRef = useRef([]);
-  const [tokenCount, setTokenCount] = useState(0); // triggers re-render when cache fills
 
   useEffect(() => {
     async function load(attempt = 1) {
@@ -1219,10 +1218,8 @@ export default function App() {
           setStatus(`Loading cards… ${Math.min(i + CHUNK, uniqueIds.length)}/${uniqueIds.length}`);
         }
 
-        tokenCacheRef.current = cached;
-        setTokenCount(cached.length);
+        TOKEN_STORE = cached;
         setProgress(100);
-        setCardsReady(true);
         setStatus(`${cached.length} cards ready.`);
         await new Promise(r => setTimeout(r, 100));
         setPhase("mode-select");
@@ -1238,14 +1235,10 @@ export default function App() {
     load();
   }, []);
 
-  async function buildDeck(playerNames) {
-    const cache = tokenCacheRef.current;
-    if (cache.length < 2) {
-      console.warn("buildDeck called but cache empty, length:", cache.length);
-      return;
-    }
+  function buildDeck(playerNames) {
+    if (TOKEN_STORE.length < 2) return;
     usedRotIds = new Set();
-    const tokens = shuffle([...cache]);
+    const tokens = shuffle([...TOKEN_STORE]);
     const shuffled = shuffle(tokens);
     const handSize = Math.min(7, Math.floor(shuffled.length / playerNames.length));
     const players = playerNames.map((name, i) => ({
