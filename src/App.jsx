@@ -447,9 +447,11 @@ function Lobby({ onStart, ready, progress, mode, onBack }) {
   const [err, setErr] = useState("");
   const upd = (i, v) => { const n = [...names]; n[i] = v; setNames(n); };
   const start = () => {
-    const v = names.map(n => n.trim()).filter(Boolean);
-    if ([...new Set(v)].length < 2) { setErr("Need 2+ unique names."); return; }
-    setErr(""); onStart(v);
+    const v = names.map(n => n.trim()).filter(n => n.length > 0);
+    if (v.length < 2) { setErr("Need at least 2 player names."); return; }
+    if (TOKEN_STORE.length < 2) { setErr(`Cards not ready yet (${TOKEN_STORE.length} loaded). Please wait.`); return; }
+    setErr("");
+    onStart(v);
   };
   return (
     <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: "24px 16px", fontFamily: mono }}>
@@ -495,7 +497,7 @@ function Lobby({ onStart, ready, progress, mode, onBack }) {
               </div>
             </>
           )}
-          <button onClick={ready ? start : undefined} disabled={!ready}
+          <button onClick={start} disabled={!ready}
             style={{
               background: ready ? C.acid : C.corrupt,
               border: "none", borderRadius: 8,
