@@ -9,10 +9,26 @@ const TURNS_PER_PLAYER = 10;
 
 // Module-level store — completely outside React, no closure issues ever
 let TOKEN_STORE = [];
+let POOL_STORE = []; // all base pools — resampled each game for variety
 let usedRotIds = new Set();
 
 
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
+
+async function fetchWithRetry(path, tries = 4) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(`${BASE_URL}${path}`, {
+        headers: { Authorization: `Bearer ${API_KEY}`, Accept: "application/json" }
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      if (i < tries - 1) await new Promise(r => setTimeout(r, 600 * (i + 1)));
+      else throw e;
+    }
+  }
+}
 function getAttr(t, type) { return t?.attributes?.find(a => a.trait_type === type)?.value || null; }
 function getBase(t) { return getAttr(t, "Base") || getAttr(t, "Category") || "?"; }
 function fixImg(url) {
@@ -1145,26 +1161,46 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 // ── END ───────────────────────────────────────────────────────────────────
 function EndScreen({ players, onRestart }) {
   const sorted = [...players].sort((a, b) => b.score - a.score);
+  const winner = sorted[0];
   return (
-    <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, padding: 20, fontFamily: mono }}>
-      <div style={{ textAlign: "center" }}>
-        <p style={{ fontFamily: imp, fontSize: 18, color: C.mag, letterSpacing: 2, margin: 0 }}>GAME OVER</p>
-        <h1 style={{ fontFamily: imp, fontSize: "min(58px,14vw)", color: C.acid, margin: "4px 0", lineHeight: 1 }}>{sorted[0].name}</h1>
-        <p style={{ fontFamily: imp, fontSize: 22, color: C.chalk, letterSpacing: 2, margin: 0 }}>WINS</p>
+    <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "24px 16px 40px", fontFamily: mono, overflowY: "auto" }}>
+      <div style={{ textAlign: "center", paddingTop: 20 }}>
+        <p style={{ fontFamily: imp, fontSize: 16, color: C.mag, letterSpacing: 2, margin: 0 }}>GAME OVER</p>
+        <h1 style={{ fontFamily: imp, fontSize: "min(52px,13vw)", color: C.acid, margin: "4px 0", lineHeight: 1 }}>{winner.name}</h1>
+        <p style={{ fontFamily: imp, fontSize: 20, color: C.chalk, letterSpacing: 2, margin: 0 }}>WINS!</p>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 340 }}>
-        {sorted.map((p, i) => (
-          <div key={p.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: i === 0 ? "rgba(57,255,20,0.07)" : C.card, border: `1px solid ${i === 0 ? C.acid : C.border}`, borderRadius: 8 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</div>
-              <div style={{ color: C.muted, fontSize: 9, marginTop: 2 }}>{p.sets.length ? p.sets.map(s => `${s.tokens.length}× ${s.base}`).join(", ") : "No sets"}</div>
-            </div>
-            <div style={{ fontFamily: imp, fontSize: 28, color: C.acid }}>{p.score}</div>
+
+      {sorted.map((p, pi) => (
+        <div key={p.name} style={{ width: "100%", maxWidth: 380, background: pi === 0 ? "rgba(57,255,20,0.05)" : C.card, border: `1px solid ${pi === 0 ? C.acid : C.border}`, borderRadius: 12, padding: "14px 14px 18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontFamily: imp, fontSize: 16, color: pi === 0 ? C.acid : C.chalk }}>{p.name}</div>
+            <div style={{ fontFamily: imp, fontSize: 28, color: C.acid }}>{p.score} pts</div>
           </div>
-        ))}
-      </div>
+          {p.sets.length === 0 ? (
+            <p style={{ color: C.muted, fontSize: 11, margin: 0 }}>No sets collected</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {p.sets.map((s, si) => (
+                <div key={si}>
+                  <p style={{ color: C.muted, fontSize: 9, letterSpacing: 2, textTransform: "uppercase", margin: "0 0 6px" }}>
+                    {s.tokens.length}× {s.base} · {s.score} pts
+                  </p>
+                  <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+                    {s.tokens.map(t => (
+                      <div key={t.id} style={{ flexShrink: 0, width: 80 }}>
+                        <NFTCard token={t} size={80} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+
       <button onClick={onRestart}
-        style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, padding: "13px 32px", cursor: "pointer", width: "100%", maxWidth: 260 }}>
+        style={{ background: C.acid, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, padding: "13px 32px", cursor: "pointer", width: "100%", maxWidth: 340 }}>
         PLAY AGAIN
       </button>
     </div>
@@ -1191,21 +1227,6 @@ export default function App() {
     let cancelled = false;
     setPreviewCards([]);
 
-    async function fetchWithRetry(path, tries = 4) {
-      for (let i = 0; i < tries; i++) {
-        try {
-          const r = await fetch(`${BASE_URL}${path}`, {
-            headers: { Authorization: `Bearer ${API_KEY}`, Accept: "application/json" }
-          });
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return await r.json();
-        } catch (e) {
-          if (i < tries - 1) await new Promise(r => setTimeout(r, 600 * (i + 1)));
-          else throw e;
-        }
-      }
-    }
-
     async function loadCards() {
       // Step 1: get Base trait catalog
       if (cancelled) return;
@@ -1220,59 +1241,58 @@ export default function App() {
         return;
       }
 
-      // Step 2: get token ID pools for up to 20 base types
+      // Step 2: get token ID pools for ALL base types (just IDs — fast)
       if (cancelled) return;
-      setStatus(`Found ${bases.length} creature types. Loading pools…`); setProgress(10);
+      setStatus(`Found ${bases.length} creature types. Loading all pools…`); setProgress(10);
       const pools = [];
-      const take = Math.min(bases.length, 20);
-      for (let i = 0; i < take; i++) {
+      // Shuffle bases so we always get random variety order
+      const shuffledBases = shuffle([...bases]);
+      for (let i = 0; i < shuffledBases.length; i++) {
         if (cancelled) return;
         try {
-          const d = await fetchWithRetry(`/traits/tokens?type=Base&value=${encodeURIComponent(bases[i].value)}&limit=100`);
+          const d = await fetchWithRetry(`/traits/tokens?type=Base&value=${encodeURIComponent(shuffledBases[i].value)}&limit=100`);
           const ids = d?.data?.token_ids || [];
-          if (ids.length >= 3) pools.push({ base: bases[i].value, ids });
-        } catch { /* skip this base */ }
-        setProgress(10 + Math.round(((i + 1) / take) * 20));
+          if (ids.length >= 3) pools.push({ base: shuffledBases[i].value, ids });
+        } catch { /* skip */ }
+        setProgress(10 + Math.round(((i + 1) / shuffledBases.length) * 50));
+        if ((i + 1) % 10 === 0) setStatus(`Loading pools… ${i + 1}/${shuffledBases.length}`);
       }
       if (!pools.length) {
         if (!cancelled) { setStatus("Could not load any card pools. Retrying…"); setProgress(0); await new Promise(r => setTimeout(r, 3000)); return loadCards(); }
         return;
       }
+      POOL_STORE = pools; // all base types stored — resampled randomly each game
 
-      // Step 3: fetch metadata for 4 tokens per base type (sequential, not parallel — avoids rate limits)
+      // Step 3: fetch a small preview sample (5 random base types, 3 cards each)
+      // just enough for the loading background animation — NOT the game deck
       if (cancelled) return;
-      const perBase = 4;
-      const toFetch = [];
-      shuffle(pools).forEach(p => toFetch.push(...shuffle(p.ids).slice(0, perBase)));
-      const uniqueIds = [...new Set(toFetch)];
-      if (!uniqueIds.length) {
-        if (!cancelled) { setStatus("No token IDs found. Retrying…"); setProgress(0); await new Promise(r => setTimeout(r, 3000)); return loadCards(); }
-        return;
-      }
-      setStatus(`Loading ${uniqueIds.length} cards…`); setProgress(30);
+      const previewPools = shuffle([...pools]).slice(0, 5);
+      const previewIds = [];
+      previewPools.forEach(p => previewIds.push(...shuffle(p.ids).slice(0, 3)));
+      setStatus(`Almost ready…`); setProgress(65);
 
       const cards = [];
-      for (let i = 0; i < uniqueIds.length; i++) {
+      for (let i = 0; i < previewIds.length; i++) {
         if (cancelled) return;
         try {
-          const d = await fetchWithRetry(`/tokens/${uniqueIds[i]}/metadata`, 2);
+          const d = await fetchWithRetry(`/tokens/${previewIds[i]}/metadata`, 2);
           if (d?.data) {
             cards.push(d.data);
-            // Stream every 3rd card to the background collage
             if (cards.length % 3 === 0) setPreviewCards(c => [...c, d.data]);
           }
         } catch { /* skip */ }
-        if (i % 5 === 0) {
-          setProgress(30 + Math.round((i / uniqueIds.length) * 65));
-          setStatus(`Loading cards… ${i + 1}/${uniqueIds.length}`);
-        }
-        if (i > 0 && i % 10 === 0) await new Promise(r => setTimeout(r, 200));
+        setProgress(65 + Math.round((i / previewIds.length) * 30));
+        if (i > 0 && i % 5 === 0) await new Promise(r => setTimeout(r, 100));
       }
 
-      // Validate we actually got usable cards
-      if (cards.length < 20) {
+      // Store the preview cards as an initial TOKEN_STORE seed
+      // buildDeck will fetch fresh cards from random pools each game
+      TOKEN_STORE = cards.length >= 5 ? cards : [];
+
+      // Validate we have enough pools to play
+      if (POOL_STORE.length < 5) {
         if (!cancelled) {
-          setStatus(`Only ${cards.length} cards loaded (need 20+). Retrying…`);
+          setStatus(`Only ${POOL_STORE.length} creature types loaded. Retrying…`);
           setProgress(0);
           await new Promise(r => setTimeout(r, 3000));
           return loadCards();
@@ -1281,9 +1301,8 @@ export default function App() {
       }
 
       if (cancelled) return;
-      TOKEN_STORE = cards;
       setProgress(100);
-      setStatus(`${cards.length} cards loaded. Ready!`);
+      setStatus(`${POOL_STORE.length} creature types ready!`);
       await new Promise(r => setTimeout(r, 400));
       if (!cancelled) setPhase("mode-select");
     }
@@ -1293,26 +1312,57 @@ export default function App() {
   }, [loadKey]);
 
   // ── BUILD DECK ──────────────────────────────────────────────────────────
-  function buildDeck(playerNames) {
-    if (TOKEN_STORE.length < 20) {
+  async function buildDeck(playerNames) {
+    if (POOL_STORE.length < 5) {
       TOKEN_STORE = [];
       setProgress(0);
-      setStatus("Reloading cards…");
+      setStatus("Reloading…");
       setPhase("loading");
       setLoadKey(k => k + 1);
       return;
     }
+
+    // Pick 10 random base types from all available pools
+    const chosen = shuffle([...POOL_STORE]).slice(0, 10);
+
+    setPhase("loading");
+    setStatus("Dealing fresh cards…");
+    setProgress(0);
+
+    const cards = [];
+    for (let i = 0; i < chosen.length; i++) {
+      const pool = chosen[i];
+      // Fetch 4 random tokens from this base type
+      const ids = shuffle([...pool.ids]).slice(0, 4);
+      for (const id of ids) {
+        try {
+          const d = await fetchWithRetry(`/tokens/${id}/metadata`, 2);
+          if (d?.data) cards.push(d.data);
+        } catch { /* skip */ }
+      }
+      setProgress(Math.round(((i + 1) / chosen.length) * 95));
+      if (i > 0 && i % 3 === 0) await new Promise(r => setTimeout(r, 150));
+    }
+
+    if (cards.length < playerNames.length * 2) {
+      setStatus("Not enough cards — try again.");
+      setTimeout(() => setPhase("lobby"), 2000);
+      return;
+    }
+
+    TOKEN_STORE = cards;
     usedRotIds = new Set();
-    const tokens = shuffle([...TOKEN_STORE]);
-    const handSize = Math.min(5, Math.floor(tokens.length / playerNames.length));
+    const shuffled = shuffle([...cards]);
+    const handSize = Math.min(5, Math.floor(shuffled.length / playerNames.length));
     const players = playerNames.map((name, i) => ({
       name,
-      hand: tokens.slice(i * handSize, (i + 1) * handSize),
+      hand: shuffled.slice(i * handSize, (i + 1) * handSize),
       sets: [], score: 0
     }));
     setGamePlayers(players);
-    setGamePile(tokens.slice(playerNames.length * handSize));
-    setGameAllTokens([...TOKEN_STORE]);
+    setGamePile(shuffled.slice(playerNames.length * handSize));
+    setGameAllTokens([...cards]);
+    setProgress(100);
     setPhase("game");
   }
 
