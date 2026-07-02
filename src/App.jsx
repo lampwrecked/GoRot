@@ -77,7 +77,7 @@ function NFTCard({ token, size = 80, fluid = false }) {
     <div style={{ width: w, flexShrink: 0, background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
       <div style={{ width: "100%", aspectRatio: "1", background: C.corrupt, position: "relative", overflow: "hidden" }}>
         {imgUrl && !errored && (
-          <img src={imgUrl} alt={token.name} crossOrigin="anonymous"
+          <img src={imgUrl} alt={token.name}
             style={{ width: "100%", height: "100%", objectFit: "cover", display: loaded ? "block" : "none", position: "absolute", inset: 0 }}
             onLoad={() => setLoaded(true)} onError={() => setErrored(true)} />
         )}
@@ -115,7 +115,7 @@ function Loader({ msg }) {
       <h1 style={{ fontFamily: imp, fontSize: 64, lineHeight: 1, margin: 0, textAlign: "center" }}>
         <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
       </h1>
-      <p style={{ color: C.muted, fontSize: 9, letterSpacing: 3, textTransform: "uppercase", margin: 0 }}>NUCLEAR SAMURAI</p>
+
       <div style={{ width: 180, height: 2, background: C.corrupt, borderRadius: 1, overflow: "hidden" }}>
         <div style={{ width: "40%", height: "100%", background: C.acid, animation: "sl 1.3s ease-in-out infinite" }} />
       </div>
@@ -327,7 +327,7 @@ function ModeSelect({ onPick }) {
   return (
     <div style={{ background: C.void, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22, padding: "28px 16px", fontFamily: mono }}>
       <div style={{ textAlign: "center" }}>
-        <p style={{ color: C.muted, fontSize: 9, letterSpacing: 4, textTransform: "uppercase", margin: "0 0 6px" }}>NUCLEAR SAMURAI</p>
+
         <h1 style={{ fontFamily: imp, fontSize: "min(64px,16vw)", lineHeight: 0.9, margin: 0 }}>
           <span style={{ color: C.acid }}>GO</span> <span style={{ color: C.mag }}>ROT</span>
         </h1>
@@ -355,6 +355,14 @@ function ModeSelect({ onPick }) {
           </button>
         ))}
       </div>
+
+      <p style={{ color: C.muted, fontSize: 9, textAlign: "center", lineHeight: 1.8, margin: 0, maxWidth: 320 }}>
+        Created by{" "}
+        <a href="https://lampwrecked.art" target="_blank" rel="noopener noreferrer" style={{ color: C.chalk, textDecoration: "none", borderBottom: `1px solid ${C.muted}` }}>Lampwrecked</a>
+        {" "}· Based on the NFT collection{" "}
+        <a href="https://brainrot.works" target="_blank" rel="noopener noreferrer" style={{ color: C.acid, textDecoration: "none", borderBottom: `1px solid ${C.acid}` }}>BRAINROT</a>
+        {" "}by <span style={{ color: C.chalk }}>Nuclear Samurai</span>
+      </p>
     </div>
   );
 }
@@ -525,7 +533,7 @@ function CardViewer({ token, onClose }) {
         {/* Card image */}
         <div style={{ width: "100%", aspectRatio: "1", background: C.corrupt, borderRadius: 14, overflow: "hidden", position: "relative", boxShadow: "0 0 40px rgba(57,255,20,0.15)" }}>
           {imgUrl && !errored && (
-            <img src={imgUrl} alt={token.name} crossOrigin="anonymous"
+            <img src={imgUrl} alt={token.name}
               style={{ width: "100%", height: "100%", objectFit: "cover", display: loaded ? "block" : "none" }}
               onLoad={() => setLoaded(true)} onError={() => setErrored(true)} />
           )}
