@@ -820,20 +820,13 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
       addLog(`${me.name} asked for ${useBase} — GO ROT!`);
       setSelBase(null);
 
-      // Pre-pop the drawn card NOW while we have fresh pile state,
-      // so performDraw just adds a known card rather than touching stale pile
+      // Pre-pop the drawn card NOW while we have fresh pile state
       const p2 = [...currentPile];
       const drawnCard = p2.length > 0 ? p2.pop() : null;
       if (drawnCard) setPile(p2);
 
-      let rotToken = null;
-      if (!(isBotMode && cur === BOT_IDX)) {
-        const inPlayIds = new Set([
-          ...currentPlayers.flatMap(p => p.hand.map(t => t.id)),
-          ...currentPile.map(t => t.id),
-        ]);
-        rotToken = pickRotToken(allTokens, inPlayIds);
-      }
+      // rotToken IS the drawnCard — show the player exactly what they're getting
+      const rotToken = (!(isBotMode && cur === BOT_IDX)) ? drawnCard : null;
 
       const rotModal = {
         type: "rot", asker: me.name, target: them.name, base: useBase,
