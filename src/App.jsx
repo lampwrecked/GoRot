@@ -1241,27 +1241,38 @@ export default function App() {
         return;
       }
 
-      // Step 2: get token ID pools for ALL base types (just IDs — fast)
+      // Step 2: pick 12 random base types spread across the full list,
+      // then fetch ONLY those pools — no need to load all 159
       if (cancelled) return;
-      setStatus(`Found ${bases.length} creature types. Loading all pools…`); setProgress(10);
+      setStatus(`${bases.length} creature types found. Sampling…`); setProgress(15);
+
+      // Space picks evenly but offset randomly so every load gives different types
+      const totalBases = bases.length;
+      const PICK_COUNT = 12;
+      const step = Math.floor(totalBases / PICK_COUNT);
+      const offset = Math.floor(Math.random() * step);
+      const picked = [];
+      for (let i = 0; i < PICK_COUNT; i++) {
+        const idx = (offset + i * step) % totalBases;
+        picked.push(bases[idx]);
+      }
+
       const pools = [];
-      // Shuffle bases so we always get random variety order
-      const shuffledBases = shuffle([...bases]);
-      for (let i = 0; i < shuffledBases.length; i++) {
+      for (let i = 0; i < picked.length; i++) {
         if (cancelled) return;
         try {
-          const d = await fetchWithRetry(`/traits/tokens?type=Base&value=${encodeURIComponent(shuffledBases[i].value)}&limit=100`);
+          const d = await fetchWithRetry(`/traits/tokens?type=Base&value=${encodeURIComponent(picked[i].value)}&limit=100`);
           const ids = d?.data?.token_ids || [];
-          if (ids.length >= 3) pools.push({ base: shuffledBases[i].value, ids });
+          if (ids.length >= 3) pools.push({ base: picked[i].value, ids });
         } catch { /* skip */ }
-        setProgress(10 + Math.round(((i + 1) / shuffledBases.length) * 50));
-        if ((i + 1) % 10 === 0) setStatus(`Loading pools… ${i + 1}/${shuffledBases.length}`);
+        setProgress(15 + Math.round(((i + 1) / picked.length) * 45));
+        setStatus(`Loading pools… ${i + 1}/${picked.length} (${picked[i].value})`);
       }
-      if (!pools.length) {
-        if (!cancelled) { setStatus("Could not load any card pools. Retrying…"); setProgress(0); await new Promise(r => setTimeout(r, 3000)); return loadCards(); }
+      if (pools.length < 5) {
+        if (!cancelled) { setStatus("Not enough pools loaded. Retrying…"); setProgress(0); await new Promise(r => setTimeout(r, 2000)); return loadCards(); }
         return;
       }
-      POOL_STORE = pools; // all base types stored — resampled randomly each game
+      POOL_STORE = pools;
 
       // Step 3: fetch a small preview sample (5 random base types, 3 cards each)
       // just enough for the loading background animation — NOT the game deck
@@ -1322,8 +1333,8 @@ export default function App() {
       return;
     }
 
-    // Pick 10 random base types from all available pools
-    const chosen = shuffle([...POOL_STORE]).slice(0, 10);
+    // Use all loaded pools (already randomized at load time)
+    const chosen = shuffle([...POOL_STORE]);
 
     setPhase("loading");
     setStatus("Dealing fresh cards…");
