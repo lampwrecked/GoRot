@@ -707,7 +707,8 @@ function GameEndModal({ players, turnsLeft, onEnd }) {
 function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd }) {
   const [players, setPlayers] = useState(init);
   const [pile, setPile] = useState(initPile);
-  const [turnCounts, setTurnCounts] = useState({}); // playerIdx -> number of asks taken
+  const [turnCounts, setTurnCounts] = useState({});
+  const turnCountsRef = useRef({});
   const [cur, setCur] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [selBase, setSelBase] = useState(null);
@@ -731,6 +732,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
   // Keep refs in sync with state
   useEffect(() => { playersRef.current = players; }, [players]);
   useEffect(() => { pileRef.current = pile; }, [pile]);
+  useEffect(() => { turnCountsRef.current = turnCounts; }, [turnCounts]);
 
   function showNext() {
     if (modalQueue.current.length > 0) {
@@ -764,7 +766,8 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
     setAskErr("");
 
     // Count this as one of the current player's turns
-    const newTurnCounts = { ...turnCounts, [cur]: (turnCounts[cur] || 0) + 1 };
+    const newTurnCounts = { ...turnCountsRef.current, [cur]: (turnCountsRef.current[cur] || 0) + 1 };
+    turnCountsRef.current = newTurnCounts;
     setTurnCounts(newTurnCounts);
 
     // Check if all players have used all their turns
@@ -825,6 +828,27 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
       const drawnCard = p2.length > 0 ? p2.pop() : null;
       if (drawnCard) setPile(p2);
 
+      // If pile is empty, skip the draw modal — just advance turn
+      if (!drawnCard) {
+        addLog(`${me.name} — pile empty, no draw.`);
+        if (allDone) {
+          let finalPs = playersRef.current;
+          const finalSets = [];
+          finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
+          setPlayers(finalPs);
+          finalSets.forEach(({ player, set, isBot }) => pendingModals.push({ type: "set", player, set, isBot }));
+          pendingModals.push({ type: "gameend", players: finalPs });
+          modalQueue.current = pendingModals;
+          showNext();
+        } else {
+          const next = (cur + 1) % currentPlayers.length;
+          setCur(next);
+          setTargetIdx((next + 1) % currentPlayers.length);
+          setRevealed(isBotMode && next === BOT_IDX);
+        }
+        return;
+      }
+
       // rotToken IS the drawnCard — show the player exactly what they're getting
       const rotToken = (!(isBotMode && cur === BOT_IDX)) ? drawnCard : null;
 
@@ -870,7 +894,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
     setPlayers(ps); setSelBase(null);
 
     // Check if game should end (turn counts already updated by ask())
-    const gameDone = currentPlayers.every((_, i) => (turnCounts[i] || 0) >= TURNS_PER_PLAYER);
+    const gameDone = currentPlayers.every((_, i) => (turnCountsRef.current[i] || 0) >= TURNS_PER_PLAYER);
     if (gameDone) {
       let finalPs = ps;
       const finalSets = [];
