@@ -298,35 +298,45 @@ function MatchModal({ asker, target, base, cards, score, bonusDesc, onDismiss })
 }
 
 // ── SET COMPLETE MODAL ────────────────────────────────────────────────────
-function SetModal({ player, set, onDismiss }) {
+function SetModal({ player, set, isBot, onDismiss }) {
+  const accent = isBot ? C.mag : "#FFD700";
+  const btnText = isBot ? "NOTED" : "SWEET!";
+  const icon = isBot ? "🤖" : "🏆";
+  const headline = isBot ? "ROTTINGTON SET!" : "SET COMPLETE!";
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.93)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflow: "auto" }}>
-      <div style={{ background: C.card, border: `2px solid #FFD700`, borderRadius: 16, padding: "24px 20px", maxWidth: 360, width: "100%", textAlign: "center", display: "flex", flexDirection: "column", gap: 18, animation: "fadein 0.2s ease", boxShadow: "0 0 32px rgba(255,215,0,0.2)" }}>
+      <div style={{ background: C.card, border: `2px solid ${accent}`, borderRadius: 16, padding: "24px 20px", maxWidth: 360, width: "100%", textAlign: "center", display: "flex", flexDirection: "column", gap: 18, animation: "fadein 0.2s ease", boxShadow: `0 0 32px ${accent}33` }}>
         <div>
-          <div style={{ fontSize: 36 }}>🏆</div>
-          <h2 style={{ fontFamily: imp, fontSize: 32, color: "#FFD700", margin: "4px 0 0", lineHeight: 1 }}>SET COMPLETE!</h2>
+          <div style={{ fontSize: 36 }}>{icon}</div>
+          <h2 style={{ fontFamily: imp, fontSize: 32, color: accent, margin: "4px 0 0", lineHeight: 1 }}>{headline}</h2>
           <p style={{ color: C.muted, fontSize: 11, margin: "6px 0 0" }}>
-            <b style={{ color: C.chalk }}>{player}</b> collected <b style={{ color: C.acid }}>{set.tokens.length}× {set.base}</b>
+            <b style={{ color: isBot ? C.mag : C.chalk }}>{player}</b> collected <b style={{ color: C.acid }}>{set.tokens.length}× {set.base}</b>
           </p>
+          {isBot && (
+            <p style={{ color: C.mag, fontSize: 10, margin: "6px 0 0", fontStyle: "italic" }}>
+              Rottington's hand — not yours
+            </p>
+          )}
         </div>
 
-        {/* Cards — 4 per row, wrapping */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, justifyItems: "center" }}>
           {set.tokens.map((card, i) => (
-            <div key={card.id} style={{ animation: `cardpop 0.25s ease ${i * 0.07}s both` }}>
+            <div key={card.id} style={{ animation: `cardpop 0.25s ease ${i * 0.07}s both`, opacity: isBot ? 0.7 : 1 }}>
               <NFTCard token={card} size={64} />
             </div>
           ))}
         </div>
 
         <div style={{ background: C.corrupt, borderRadius: 8, padding: "12px 16px" }}>
-          <div style={{ fontFamily: imp, fontSize: 28, color: "#FFD700" }}>+{set.score} pts</div>
+          <div style={{ fontFamily: imp, fontSize: 28, color: accent }}>+{set.score} pts</div>
           {set.bonusDesc.length > 0 && <div style={{ color: C.muted, fontSize: 10, marginTop: 4 }}>{set.bonusDesc.join("  ")}</div>}
+          {isBot && <div style={{ color: C.mag, fontSize: 10, marginTop: 4 }}>Rottington scores these points</div>}
         </div>
 
         <button onClick={onDismiss}
-          style={{ background: "#FFD700", border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
-          SWEET!
+          style={{ background: accent, border: "none", borderRadius: 8, color: C.void, fontFamily: imp, fontSize: 20, letterSpacing: 1, padding: 13, cursor: "pointer" }}>
+          {btnText}
         </button>
       </div>
     </div>
@@ -757,7 +767,8 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
     const p = ps[idx];
     const { newSets, remaining } = computeSets(p.hand);
     if (!newSets.length) return ps;
-    newSets.forEach(s => newSetsOut.push({ player: p.name, set: s }));
+    const isBot = isBotMode && idx === BOT_IDX;
+    newSets.forEach(s => newSetsOut.push({ player: p.name, set: s, isBot }));
     return ps.map((pl, i) => i !== idx ? pl : {
       ...pl, hand: remaining,
       sets: [...pl.sets, ...newSets],
@@ -805,7 +816,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
       newSetsFound.forEach(({ player, set }) => {
         addLog(`${player} SET: ${set.tokens.length}× ${set.base} = ${set.score}pts`);
-        pendingModals.push({ type: "set", player, set });
+        pendingModals.push({ type: "set", player, set, isBot });
       });
 
       setPlayers(ps); setSelBase(null);
@@ -823,7 +834,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
         setPlayers(finalPs);
         finalSets.forEach(({ player, set }) => {
           addLog(`${player} SET: ${set.tokens.length}× ${set.base} = ${set.score}pts`);
-          pendingModals.push({ type: "set", player, set });
+          pendingModals.push({ type: "set", player, set, isBot });
         });
         pendingModals.push({ type: "gameend", players: finalPs });
       }
@@ -879,7 +890,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
     newSetsFound.forEach(({ player, set }) => {
       addLog(`${player} SET: ${set.tokens.length}× ${set.base} = ${set.score}pts`);
-      pendingModals.push({ type: "set", player, set });
+      pendingModals.push({ type: "set", player, set, isBot });
     });
 
     setPlayers(ps); setSelBase(null);
@@ -889,7 +900,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
       const finalSets = [];
       finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
       setPlayers(finalPs);
-      finalSets.forEach(({ player, set }) => pendingModals.push({ type: "set", player, set }));
+      finalSets.forEach(({ player, set }) => pendingModals.push({ type: "set", player, set, isBot }));
       pendingModals.push({ type: "gameend", players: finalPs });
     }
 
@@ -899,53 +910,55 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
 
   // Called when the player taps the draw pile during a Go Rot modal
   function performDraw() {
-    let ps = [...players]; let p2 = [...pile];
-    const newSetsFound = [];
+    let drawnCard = null;
+    let p2 = [...pile];
 
     if (p2.length > 0) {
-      const drawn = p2.pop();
-      ps = ps.map((p, i) => i === cur ? { ...p, hand: [...p.hand, drawn] } : p);
-      addLog(`${me.name} drew: ${getBase(drawn)}`);
-      ps = applyCheck(ps, cur, newSetsFound);
+      drawnCard = p2.pop();
       setPile(p2);
+      addLog(`${players[cur].name} drew: ${getBase(drawnCard)}`);
     } else {
-      addLog(`${me.name} — pile was already empty.`);
+      addLog(`${players[cur].name} — pile was already empty.`);
     }
 
-    const setModals = [];
-    newSetsFound.forEach(({ player, set }) => {
-      addLog(`${player} SET: ${set.tokens.length}× ${set.base} = ${set.score}pts`);
-      setModals.push({ type: "set", player, set });
+    // Use functional update to ensure we work off the latest state
+    setPlayers(latestPlayers => {
+      let ps = drawnCard
+        ? latestPlayers.map((p, i) => i === cur ? { ...p, hand: [...p.hand, drawnCard] } : p)
+        : [...latestPlayers];
+
+      const newSetsFound = [];
+      ps = applyCheck(ps, cur, newSetsFound);
+
+      const setModals = newSetsFound.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot }));
+
+      setModal(null);
+
+      if (p2.length === 0) {
+        let finalPs = ps;
+        const finalSets = [];
+        finalPs.forEach((_, i) => { finalPs = applyCheck(finalPs, i, finalSets); });
+        const endModals = finalSets.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot }));
+        endModals.push({ type: "gameend", players: finalPs });
+        modalQueue.current = endModals;
+        setTimeout(showNext, 0);
+        return finalPs;
+      }
+
+      if (setModals.length > 0) {
+        modalQueue.current = setModals;
+        setTimeout(showNext, 0);
+      } else {
+        const next = (cur + 1) % ps.length;
+        setTimeout(() => {
+          setCur(next); setTargetIdx((next + 1) % ps.length);
+          setRevealed(isBotMode && next === BOT_IDX);
+          setSelBase(null);
+        }, 0);
+      }
+
+      return ps;
     });
-
-    setPlayers(ps);
-    setModal(null);
-
-    if (p2.length === 0) {
-      // Score any remaining sets in all hands before ending
-      let finalPs = ps;
-      const finalSets = [];
-      finalPs.forEach((_, i) => {
-        const before = finalPs;
-        finalPs = applyCheck(finalPs, i, finalSets);
-      });
-      setPlayers(finalPs);
-      const endModals = finalSets.map(({ player, set }) => ({ type: "set", player, set }));
-      endModals.push({ type: "gameend", players: finalPs });
-      modalQueue.current = endModals;
-      showNext();
-      return;
-    }
-
-    if (setModals.length > 0) {
-      modalQueue.current = setModals;
-      showNext();
-    } else {
-      const next = (cur + 1) % ps.length;
-      setCur(next); setTargetIdx((next + 1) % ps.length);
-      setRevealed(isBotMode && next === BOT_IDX);
-      setSelBase(null);
-    }
   }
 
   function dismissModal() {
@@ -1022,7 +1035,7 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
         <MatchModal asker={modal.asker} target={modal.target} base={modal.base} cards={modal.cards} score={modal.score} bonusDesc={modal.bonusDesc} onDismiss={dismissModal} />
       )}
       {modal?.type === "set" && (
-        <SetModal player={modal.player} set={modal.set} onDismiss={dismissModal} />
+        <SetModal player={modal.player} set={modal.set} isBot={isBotMode && modal.isBot} onDismiss={dismissModal} />
       )}
 
       {/* Top bar */}
