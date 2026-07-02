@@ -1155,6 +1155,7 @@ export default function App() {
   const [phase, setPhase] = useState("loading");
   const [status, setStatus] = useState("Connecting…");
   const [progress, setProgress] = useState(0);
+  const [loadKey, setLoadKey] = useState(0); // increment to re-trigger load
   const [mode, setMode] = useState(null);
   const [gamePlayers, setGamePlayers] = useState([]);
   const [gamePile, setGamePile] = useState([]);
@@ -1221,6 +1222,10 @@ export default function App() {
       const toFetch = [];
       shuffle(pools).forEach(p => toFetch.push(...shuffle(p.ids).slice(0, perBase)));
       const uniqueIds = [...new Set(toFetch)];
+      if (!uniqueIds.length) {
+        if (!cancelled) { setStatus("No token IDs found. Retrying…"); setProgress(0); await new Promise(r => setTimeout(r, 3000)); return loadCards(); }
+        return;
+      }
       setStatus(`Loading ${uniqueIds.length} cards…`); setProgress(30);
 
       const cards = [];
@@ -1239,8 +1244,14 @@ export default function App() {
         if (i > 0 && i % 10 === 0) await new Promise(r => setTimeout(r, 200));
       }
 
+      // Validate we actually got usable cards
       if (cards.length < 20) {
-        if (!cancelled) { setStatus(`Only ${cards.length} cards loaded — retrying…`); setProgress(0); await new Promise(r => setTimeout(r, 3000)); return loadCards(); }
+        if (!cancelled) {
+          setStatus(`Only ${cards.length} cards loaded (need 20+). Retrying…`);
+          setProgress(0);
+          await new Promise(r => setTimeout(r, 3000));
+          return loadCards();
+        }
         return;
       }
 
@@ -1254,11 +1265,18 @@ export default function App() {
 
     loadCards();
     return () => { cancelled = true; };
-  }, []);
+  }, [loadKey]);
 
   // ── BUILD DECK ──────────────────────────────────────────────────────────
   function buildDeck(playerNames) {
-    if (TOKEN_STORE.length < 20) return; // should never happen — gated by loading
+    if (TOKEN_STORE.length < 20) {
+      TOKEN_STORE = [];
+      setProgress(0);
+      setStatus("Reloading cards…");
+      setPhase("loading");
+      setLoadKey(k => k + 1);
+      return;
+    }
     usedRotIds = new Set();
     const tokens = shuffle([...TOKEN_STORE]);
     const handSize = Math.min(7, Math.floor(tokens.length / playerNames.length));
