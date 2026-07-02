@@ -1159,7 +1159,7 @@ export default function App() {
   const [gameAllTokens, setGameAllTokens] = useState([]);
   const [endPlayers, setEndPlayers] = useState([]);
 
-  const tokenCache = useRef([]); // prefetched metadata, reused every deal
+  const [tokenCache, setTokenCache] = useState([]);
 
   useEffect(() => {
     async function load(attempt = 1) {
@@ -1212,7 +1212,7 @@ export default function App() {
           setStatus(`Loading cards… ${Math.min(i + CHUNK, uniqueIds.length)}/${uniqueIds.length}`);
         }
 
-        tokenCache.current = cached;
+        setTokenCache(cached);
         setProgress(100);
         setCardsReady(true);
         setStatus(`${cached.length} cards ready.`);
@@ -1232,22 +1232,10 @@ export default function App() {
   }, []);
 
   async function buildDeck(playerNames) {
-    if (!cardsReady) {
-      // Shouldn't happen since button is gated, but just in case
-      return;
-    }
-    if (tokenCache.current.length < 2) {
-      // Cache is empty despite cardsReady — something went wrong, reload
-      setCardsReady(false);
-      setProgress(0);
-      setPhase("loading");
-      setStatus("Reloading cards…");
-      return;
-    }
-    setPhase("loading"); setStatus("Shuffling the deck…");
+    if (!cardsReady || tokenCache.length < 2) return;
     usedRotIds = new Set();
     try {
-      const tokens = shuffle([...tokenCache.current]);
+      const tokens = shuffle([...tokenCache]);
       const shuffled = shuffle(tokens);
       const handSize = Math.min(7, Math.floor(shuffled.length / playerNames.length));
       const players = playerNames.map((name, i) => ({ name, hand: shuffled.slice(i * handSize, (i + 1) * handSize), sets: [], score: 0 }));
@@ -1256,8 +1244,7 @@ export default function App() {
       setGameAllTokens(tokens);
       setPhase("game");
     } catch (e) {
-      setStatus(`Error: ${e.message}`);
-      setTimeout(() => setPhase("lobby"), 3000);
+      console.error("buildDeck error:", e);
     }
   }
 
