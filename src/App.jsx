@@ -1232,8 +1232,16 @@ export default function App() {
   }, []);
 
   async function buildDeck(playerNames) {
-    if (!cardsReady || tokenCache.current.length < playerNames.length * 2) {
-      setStatus("Cards still loading — please wait.");
+    if (!cardsReady) {
+      // Shouldn't happen since button is gated, but just in case
+      return;
+    }
+    if (tokenCache.current.length < 2) {
+      // Cache is empty despite cardsReady — something went wrong, reload
+      setCardsReady(false);
+      setProgress(0);
+      setPhase("loading");
+      setStatus("Reloading cards…");
       return;
     }
     setPhase("loading"); setStatus("Shuffling the deck…");
