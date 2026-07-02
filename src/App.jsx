@@ -820,6 +820,12 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
       addLog(`${me.name} asked for ${useBase} — GO ROT!`);
       setSelBase(null);
 
+      // Pre-pop the drawn card NOW while we have fresh pile state,
+      // so performDraw just adds a known card rather than touching stale pile
+      const p2 = [...currentPile];
+      const drawnCard = p2.length > 0 ? p2.pop() : null;
+      if (drawnCard) setPile(p2);
+
       let rotToken = null;
       if (!(isBotMode && cur === BOT_IDX)) {
         const inPlayIds = new Set([
@@ -829,7 +835,10 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
         rotToken = pickRotToken(allTokens, inPlayIds);
       }
 
-      const rotModal = { type: "rot", asker: me.name, target: them.name, base: useBase, rotToken, needsDraw: true };
+      const rotModal = {
+        type: "rot", asker: me.name, target: them.name, base: useBase,
+        rotToken, drawnCard, playerIdx: cur
+      };
       modalQueue.current = pendingModals;
       setModal(rotModal);
     }
@@ -882,41 +891,35 @@ function GameScreen({ players: init, pile: initPile, allTokens, isBotMode, onEnd
     showNext();
   }
 
-  // Called when the player taps the draw pile during a Go Rot modal
+  // Called when the player taps GOT IT on the Go Rot modal
   function performDraw() {
-    const p2 = [...pileRef.current];
-    const drawnCard = p2.length > 0 ? p2.pop() : null;
-    const curIdx = cur; // capture current index for closure
+    const { drawnCard, playerIdx } = modal || {};
 
     if (drawnCard) {
-      addLog(`${playersRef.current[curIdx].name} drew: ${getBase(drawnCard)}`);
-      setPile(p2);
+      addLog(`${players[playerIdx].name} drew: ${getBase(drawnCard)}`);
     }
 
-    // Use functional updater — always gets the absolute latest players state
-    // regardless of when this function was created or closures
     setPlayers(latestPlayers => {
       let ps = latestPlayers.map((p, i) =>
-        i === curIdx && drawnCard ? { ...p, hand: [...p.hand, drawnCard] } : p
+        i === playerIdx && drawnCard ? { ...p, hand: [...p.hand, drawnCard] } : p
       );
       const newSetsFound = [];
-      ps = applyCheck(ps, curIdx, newSetsFound);
+      ps = applyCheck(ps, playerIdx, newSetsFound);
 
       const setModals = newSetsFound.map(({ player, set, isBot }) => ({ type: "set", player, set, isBot }));
 
       if (setModals.length > 0) {
-        // Schedule after this state update settles
         setTimeout(() => {
           modalQueue.current = setModals;
           setModal(null);
           showNext();
         }, 0);
       } else {
-        const next = (curIdx + 1) % ps.length;
+        const next = (playerIdx + 1) % latestPlayers.length;
         setTimeout(() => {
           setModal(null);
           setCur(next);
-          setTargetIdx((next + 1) % ps.length);
+          setTargetIdx((next + 1) % latestPlayers.length);
           setRevealed(isBotMode && next === BOT_IDX);
           setSelBase(null);
         }, 0);
